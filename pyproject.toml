@@ -21,6 +21,7 @@ dependencies = [
 
 [project.scripts]
 mcbuild = "mcbuild.cli:main"
+mcbuild-project = "mcbuild.orchestrator.cli:main"
 mcbuild-server = "mcbuild.server.ws_server:main"
 
 [project.optional-dependencies]
