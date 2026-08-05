@@ -25,6 +25,7 @@ class VoxelGrid:
         self._blocks: dict[Coord, int] = {}
         self._min: list[int] | None = None  # [minx, miny, minz]
         self._max: list[int] | None = None  # [maxx, maxy, maxz]
+        self.palette_warnings: list[str] = []
 
     def __len__(self) -> int:
         return len(self._blocks)
@@ -58,6 +59,7 @@ class VoxelGrid:
         new._blocks = dict(self._blocks)
         new._min = list(self._min) if self._min is not None else None
         new._max = list(self._max) if self._max is not None else None
+        new.palette_warnings = list(self.palette_warnings)
         return new
 
     def _check_extent(self, x: int, y: int, z: int) -> None:

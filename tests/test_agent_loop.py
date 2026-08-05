@@ -812,3 +812,23 @@ def test_turn_usage_event_emitted_each_llm_call(tmp_path):
     # cumulative cost is non-decreasing across turns
     cumulative = [d["cumulative_cost_usd"] for d in turn_events]
     assert cumulative == sorted(cumulative)
+
+
+def test_optional_system_context_is_appended_without_changing_default_prompt(tmp_path):
+    from mcbuild.agent import prompts
+
+    default_dir = RunDir.create("default", base=str(tmp_path))
+    run_agent("hut", FakeLLM(), Config(max_iters=6, seed=1), default_dir)
+    default_messages = _session_messages(default_dir)
+    assert default_messages[0] == {"role": "system", "content": prompts.build_system_prompt()}
+
+    project_dir = RunDir.create("project", base=str(tmp_path))
+    run_agent(
+        "hut",
+        FakeLLM(),
+        Config(max_iters=6, seed=1),
+        project_dir,
+        system_context="PROJECT-GLOBAL COORDINATES",
+    )
+    project_messages = _session_messages(project_dir)
+    assert project_messages[0]["content"] == prompts.build_system_prompt() + "\n\nPROJECT-GLOBAL COORDINATES"

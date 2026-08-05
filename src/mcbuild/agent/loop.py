@@ -231,6 +231,7 @@ def _validated_views(args: dict) -> tuple[list[dict], str | None]:
         if err:
             problems.append(f"views[{i}]: {err}")
         else:
+            assert norm is not None
             normalized.append(norm)
     if problems:
         return [], "Invalid `views` (nothing was built or rendered — fix and retry):\n" + "\n".join(problems)
@@ -375,12 +376,17 @@ def run_agent(
     rundir: RunDir,
     reference_image: Image.Image | None = None,
     on_event: EventCallback | None = None,
+    *,
+    system_context: str | None = None,
 ) -> AgentResult:
     def emit(event_type: str, **data: Any) -> None:
         if on_event:
             on_event(event_type, data)
 
-    messages: list[dict] = [{"role": "system", "content": prompts.build_system_prompt()}]
+    system_prompt = prompts.build_system_prompt()
+    if system_context is not None:
+        system_prompt = f"{system_prompt}\n\n{system_context}"
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
     user_content: list[dict] = [
         {"type": "text", "text": prompts.build_user_prompt(prompt, config.seed, reference_image is not None)}
     ]
@@ -791,6 +797,7 @@ def run_agent(
                         if spec_error:
                             messages.append(_tool_result(tc.id, f"inspect failed: {spec_error}"))
                             continue
+                        assert spec is not None
                         view_label, img = views.render_view(best_grid, spec)
                         label = f"Inspection view ({view_label}):"
                         if _has_interior_view([spec]):
