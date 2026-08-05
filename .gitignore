@@ -5,12 +5,14 @@ __pycache__/
 runs/
 *.egg-info/
 .pytest_cache/
+.pytest-tmp*/
 dist/
 build/
 !docs/images/*.png
 *.mcmeta
 !mod/src/main/resources/pack.mcmeta
 .serena/
+.codex/
 .pytest_cache/
 
 # Forge mod build outputs (mod/build/ is already covered by the blanket build/ rule above)

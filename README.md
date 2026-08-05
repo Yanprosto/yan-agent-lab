@@ -119,11 +119,74 @@ Runs the full pipeline against a scripted stand-in LLM (broken blueprint ->
 line-mapped error -> fixed blueprint -> render -> finish) so you can see the
 whole loop and artifact layout without hitting the network.
 
+## Large projects / multi-agent orchestrator
+
+`mcbuild` and Minecraft's `/build <prompt>` keep the original single-building
+agent behavior. For a town, castle complex, harbor district, or another build
+that should be split into semantic components, use the independent project CLI:
+
+```bash
+uv run mcbuild-project "build a fortified medieval town"
+```
+
+The planner submits a structured `ProjectPlan`, receives runtime validation plus
+a deterministic top-down plan PNG, and must explicitly approve that rendered
+plan before any worker starts. Work packages then execute in stable dependency
+order. A repeated family (for example four matching towers) remains one work
+package with multiple instances and receives exactly one call to the existing
+mcbuild worker.
+
+Useful options include `--model`, `--planner-model`, `--max-iters`,
+`--planner-max-iters`, `--max-components`, `--seed`, `--display`, `--out`,
+`--reasoning`, and `--cost-ceiling`. The cost ceiling is global: planner and all
+workers draw from the same USD budget. The complete offline path needs no API
+key or network:
+
+```bash
+uv run mcbuild-project "a small fortified settlement" --fake-llm --display off
+```
+
+A project run keeps planner, worker, and merge artifacts separate:
+
+```text
+runs/<timestamp>-<slug>/
+  prompt.txt
+  project_config.json
+  project/
+    plan_v01.json
+    plan_v01.png
+    plan_v01_validation.json
+    approved_plan.json
+    approved_plan.png
+    planner_session.json
+  components/
+    01_<work-package-id>/
+      worker_prompt.txt
+      worker_result.json
+      patch_validation.json
+      accepted_patch.schem
+      merged_after_component.schem
+  merge_reports/component_01.json
+  final.schem                 # successful projects
+  partial.schem               # preserved merged work after an abort, when non-empty
+  project_events.jsonl
+  project_result.json
+```
+
+Responsibilities are 2.5D: a two-dimensional `RegionExpr` plus an inclusive Y
+range. A hard package may write only in its core; any stored voxel intent outside
+it (including explicit air) rejects the complete patch. A soft package may write
+in core plus halo; outside intents are clipped and reported. Declared two-party
+interface zones always preserve existing non-air blocks. Core write policies are
+`preserve_existing`, `additive`, `overwrite`, and `carve`; overwrite and carve
+are restricted to the core.
+
 ## Live building in Minecraft
 
 Instead of (or alongside) a `.schem` file, mcbuild can build directly inside a running
-world: a NeoForge mod adds a `/build <prompt>` command that streams the same agent loop
-over a WebSocket, placing blocks live near the player as each iteration succeeds.
+world. The NeoForge mod provides `/build <prompt>` for the unchanged single-agent loop
+and `/project <prompt>` for the multi-component orchestrator. Both reuse the same
+WebSocket response protocol and player-position anchor.
 
 Start the server:
 
@@ -144,7 +207,9 @@ mcbuild-server
   --cost-ceiling FLOAT  Abort a build (keeping its best build so far) once usage cost reaches this many USD
 ```
 
-These apply server-wide to every `/build` that connects — the mod only sends the prompt.
+These apply server-wide to every task that connects. Project requests use the selected
+model for both planner and workers; the mod sends only `cmd` (`build` or `project`) and
+the prompt.
 
 </details>
 
@@ -155,9 +220,10 @@ cd mod
 ./gradlew runClient   # or runServer; or `./gradlew build` and drop the jar in a world's mods/
 ```
 
-Then in-game: `/build a small stone hut`. Chat shows each tool call's design notes,
-per-iteration build stats, and per-turn cost as the agent works; blocks appear near the
-player as each iteration succeeds. Only one build runs at a time, and there's no
+Then use `/build a small stone hut` or `/project a fortified riverside town`. Chat shows
+safe progress and block stats as the task works; planner/worker hidden reasoning is not
+forwarded. Blocks appear near the player after each successful iteration or component.
+Only one build or project runs at a time, and there's no
 authentication by design — this targets a local/trusted world, not a public server.
 Run artifacts (`runs/<timestamp>-<slug>/`, including `final.schem`) are still written
 for debugging, same as the CLI.
@@ -206,10 +272,11 @@ src/mcbuild/
                       block geometry (blockmodel/blockstate), textures
   llm/                OpenRouter client, scripted offline FakeLLM
   agent/              orchestration loop, prompts, tool schemas, text query views
+  orchestrator/       project contracts, planner, 2.5D regions, serial workers, merge logic
   export/             Sponge Schematic v3 (.schem) export
-  server/             mcbuild-server WebSocket entry point, live-build session + grid diffing
+  server/             WebSocket entry point, build/project sessions + grid diffing
 
-mod/                  NeoForge 1.21.1 mod: /build command, WebSocket client, block placement
+mod/                  NeoForge 1.21.1 mod: /build + /project, shared WS client, block placement
 ```
 
 ## Development
@@ -221,7 +288,8 @@ uv run ruff format .       # format
 uv run ty check            # type check
 ```
 
-Tests cover: sandbox security (imports/dunders/budget), DSL shape primitives,
+Tests cover: project models/regions/validation/planning/merge/offline E2E, sandbox security,
+DSL shape primitives,
 palette lookup + suggestions, isometric renderer output, sixel encoding,
 Sponge Schematic v2 round-trip via `nbtlib`, and an offline agent-loop
 integration test (scripted LLM: error -> fix -> finish) via the CLI's
@@ -236,12 +304,14 @@ CI runs all four (lint, format check, type check, tests) on every push/PR.
 - Block geometry is paired from bundled vanilla blockstate JSON + hardcoded shape templates
   (the vanilla model JSONs are not shipped); silhouettes are correct, not pixel-exact-vanilla.
 - No cross-run memory / few-shot retrieval of past builds.
-- Live building (`mod/` + `mcbuild-server`) is NeoForge-only, single-build-at-a-time, and has
+- Project workers are serial; responsibilities are 2.5D and do not inspect real terrain.
+- There is no pause/resume queue, worker-to-worker free conversation, automatic component retry,
+  or final global architectural critic in this milestone.
+- Live building (`mod/` + `mcbuild-server`) is NeoForge-only, single-task-at-a-time, and has
   no authentication — meant for a local/trusted world, not a public server.
 
 ## Future work (backlog)
 
-- A structured plan/component-registry tool and gating `finish()` on a verification checklist.
 - Iteration diffs (blocks added/removed vs. the previous iteration) and richer stats
   (per-storey counts, interior air volume, mirror-symmetry score).
 
