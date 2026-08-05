@@ -1,4 +1,4 @@
-"""WebSocket server entry point: accepts a mod client, runs one build per connection."""
+"""WebSocket server entry point for single builds and multi-component projects."""
 
 from __future__ import annotations
 
@@ -12,15 +12,16 @@ from websockets.asyncio.server import ServerConnection, serve
 
 from mcbuild.config import Config
 from mcbuild.server import protocol
+from mcbuild.server.project_session import run_project_session
 from mcbuild.server.session import run_build_session
 
-# Only one build runs at a time in this version; a second connection while a build is in
+# Only one task runs at a time in this version; a second connection while a task is in
 # flight is rejected outright rather than queued.
-_build_in_progress = False
+_task_in_progress = False
 
 
 async def _handler(connection: ServerConnection, config: Config) -> None:
-    global _build_in_progress
+    global _task_in_progress
 
     raw = await connection.recv()
     try:
@@ -29,19 +30,24 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
         await connection.send(protocol.error("Malformed request: expected JSON."))
         return
 
-    if request.get("cmd") != "build" or not request.get("prompt"):
-        await connection.send(protocol.error('Expected {"cmd": "build", "prompt": "..."}.'))
+    command = request.get("cmd")
+    prompt = request.get("prompt")
+    if command not in {"build", "project"} or not isinstance(prompt, str) or not prompt.strip():
+        await connection.send(protocol.error('Expected {"cmd": "build|project", "prompt": "..."}.'))
         return
 
-    if _build_in_progress:
+    if _task_in_progress:
         await connection.send(protocol.error("A build is already in progress; try again shortly."))
         return
 
-    _build_in_progress = True
+    _task_in_progress = True
     try:
-        await run_build_session(request["prompt"], connection.send, config=config)
+        if command == "build":
+            await run_build_session(prompt, connection.send, config=config)
+        else:
+            await run_project_session(prompt, connection.send, config=config)
     finally:
-        _build_in_progress = False
+        _task_in_progress = False
 
 
 async def _serve(host: str, port: int, config: Config) -> None:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
 
 from mcbuild.agent.loop import run_agent
 from mcbuild.config import Config
@@ -12,9 +11,8 @@ from mcbuild.llm.client import OpenRouterClient
 from mcbuild.rundir import RunDir
 from mcbuild.server import protocol
 from mcbuild.server.delta import compute_block_delta
+from mcbuild.server.message_queue import Send, drain_messages, finish_message_drain
 from mcbuild.voxel import VoxelGrid
-
-Send = Callable[[str], Awaitable[None]]
 
 
 def _format_render_chat(iteration: int, stats: dict) -> str:
@@ -51,17 +49,16 @@ async def run_build_session(prompt: str, send: Send, config: Config | None = Non
     def enqueue(message: str) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, message)
 
-    drain_task = asyncio.create_task(_drain_forever(queue, send))
+    drain_task = asyncio.create_task(drain_messages(queue, send))
 
     rundir = RunDir.create(prompt, base="runs")
-    enqueue(protocol.hello(str(rundir.root)))
+    queue.put_nowait(protocol.hello(str(rundir.root)))
 
     try:
         llm = OpenRouterClient()
     except RuntimeError as e:
-        enqueue(protocol.error(str(e)))
-        await queue.join()
-        drain_task.cancel()
+        queue.put_nowait(protocol.error(str(e)))
+        await finish_message_drain(queue, drain_task)
         return
 
     config = config or Config()
@@ -94,17 +91,10 @@ async def run_build_session(prompt: str, send: Send, config: Config | None = Non
     if result.grid is not None and len(result.grid) > 0:
         export_schem(result.grid, str(rundir.root / "final.schem"))
 
+    await asyncio.sleep(0)
     if result.finished:
-        enqueue(protocol.finish(result.summary))
+        queue.put_nowait(protocol.finish(result.summary))
     else:
-        enqueue(protocol.error(result.summary))
+        queue.put_nowait(protocol.error(result.summary))
 
-    await queue.join()  # let the drain task flush everything enqueued above before we return
-    drain_task.cancel()
-
-
-async def _drain_forever(queue: asyncio.Queue[str], send: Send) -> None:
-    while True:
-        message = await queue.get()
-        await send(message)
-        queue.task_done()
+    await finish_message_drain(queue, drain_task)
