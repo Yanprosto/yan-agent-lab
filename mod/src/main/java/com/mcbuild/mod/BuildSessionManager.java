@@ -13,7 +13,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Tracks the single in-flight {@code /build} session (v1 supports one at a time) and applies
+ * Tracks the single in-flight {@code /build} or {@code /project} session and applies
  * streamed block deltas + chat feedback on behalf of the connected {@link WsClient}.
  */
 public final class BuildSessionManager {
@@ -22,12 +22,22 @@ public final class BuildSessionManager {
     private BuildSessionManager() {}
 
     public static synchronized boolean startBuild(String prompt, BlockPos anchor, ServerLevel level, ServerPlayer player) {
+        return start("build", prompt, anchor, level, player);
+    }
+
+    public static synchronized boolean startProject(
+            String prompt, BlockPos anchor, ServerLevel level, ServerPlayer player) {
+        return start("project", prompt, anchor, level, player);
+    }
+
+    private static synchronized boolean start(
+            String command, String prompt, BlockPos anchor, ServerLevel level, ServerPlayer player) {
         if (active != null) {
             return false;
         }
-        Session session = new Session(anchor, level, player);
+        Session session = new Session(command, anchor, level, player);
         active = session;
-        WsClient client = new WsClient(prompt, session);
+        WsClient client = new WsClient(command, prompt, session);
         session.client = client;
         client.connect();
         return true;
@@ -44,12 +54,14 @@ public final class BuildSessionManager {
         private final BlockPos anchor;
         private final ServerLevel level;
         private final ServerPlayer player;
+        private final String chatPrefix;
         private WsClient client;
 
-        private Session(BlockPos anchor, ServerLevel level, ServerPlayer player) {
+        private Session(String command, BlockPos anchor, ServerLevel level, ServerPlayer player) {
             this.anchor = anchor;
             this.level = level;
             this.player = player;
+            this.chatPrefix = "project".equals(command) ? "[mcbuild-project]" : "[mcbuild]";
         }
 
         public void onChat(String text) {
@@ -68,7 +80,7 @@ public final class BuildSessionManager {
                             state = BlockStateCodec.parse(level.registryAccess(), change.block);
                         } catch (CommandSyntaxException e) {
                             player.sendSystemMessage(Component.literal(
-                                    "[mcbuild] failed to parse block '" + change.block + "': " + e.getMessage()));
+                                    chatPrefix + " failed to parse block '" + change.block + "': " + e.getMessage()));
                             continue;
                         }
                     }
@@ -78,12 +90,12 @@ public final class BuildSessionManager {
         }
 
         public void onFinish(String summary) {
-            runOnServerThread(() -> player.sendSystemMessage(Component.literal("[mcbuild] " + summary)));
+            runOnServerThread(() -> player.sendSystemMessage(Component.literal(chatPrefix + " " + summary)));
             clear(this);
         }
 
         public void onError(String reason) {
-            runOnServerThread(() -> player.sendSystemMessage(Component.literal("[mcbuild] error: " + reason)));
+            runOnServerThread(() -> player.sendSystemMessage(Component.literal(chatPrefix + " error: " + reason)));
             clear(this);
         }
 

@@ -8,7 +8,8 @@ import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
 /**
- * One connection per {@code /build} invocation: sends the prompt, then dispatches streamed
+ * One connection per {@code /build} or {@code /project} invocation: sends the command and
+ * prompt, then dispatches streamed
  * protocol messages to the owning {@link BuildSessionManager.Session}.
  *
  * <p>All {@code on*} callbacks here fire on this client's own network thread, not the server
@@ -19,11 +20,13 @@ public class WsClient extends WebSocketClient {
     private static final Gson GSON = new Gson();
     private static final URI SERVER_URI = URI.create("ws://127.0.0.1:8765");
 
+    private final String command;
     private final String prompt;
     private final BuildSessionManager.Session session;
 
-    public WsClient(String prompt, BuildSessionManager.Session session) {
+    public WsClient(String command, String prompt, BuildSessionManager.Session session) {
         super(SERVER_URI);
+        this.command = command;
         this.prompt = prompt;
         this.session = session;
     }
@@ -31,7 +34,7 @@ public class WsClient extends WebSocketClient {
     @Override
     public void onOpen(ServerHandshake handshake) {
         JsonObject request = new JsonObject();
-        request.addProperty("cmd", "build");
+        request.addProperty("cmd", command);
         request.addProperty("prompt", prompt);
         send(request.toString());
     }
