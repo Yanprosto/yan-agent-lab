@@ -1,7 +1,10 @@
+import json
+
 import numpy as np
 from PIL import Image
 
 from mcbuild.dsl.sandbox import run_blueprint
+from mcbuild.orchestrator.final_render import render_final_grid
 from mcbuild.render.camera import Camera, render_from_camera
 from mcbuild.render.iso import _slice_keep, render_iso, render_topdown
 from mcbuild.render.sixel import encode_sixel
@@ -47,6 +50,24 @@ def test_render_topdown():
     grid = _small_house_grid()
     img = render_topdown(grid)
     assert img.width > 0 and img.height > 0
+
+
+def test_render_final_grid_writes_complete_town_set(tmp_path):
+    grid = _small_house_grid()
+    paths = render_final_grid(grid, tmp_path, hero_yaw=1)
+
+    assert set(paths) == {"hero", "contact_sheet", "topdown", "stats"}
+    for name in ("hero", "contact_sheet", "topdown"):
+        with Image.open(paths[name]) as image:
+            image.verify()
+        with Image.open(paths[name]) as image:
+            assert image.getbbox() is not None
+
+    stats = json.loads(paths["stats"].read_text(encoding="utf-8"))
+    assert stats["block_count"] == len(grid)
+    assert stats["non_air_blocks"] == len(grid)
+    assert stats["hero_yaw"] == 1
+    assert len(stats["contact_sheet_labels"]) == 5
 
 
 def test_empty_grid_does_not_crash():

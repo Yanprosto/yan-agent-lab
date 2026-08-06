@@ -6,6 +6,7 @@ from mcbuild.config import Config
 from mcbuild.orchestrator.cli import app
 from mcbuild.orchestrator.fake import (
     FakeProjectPlannerLLM,
+    fake_project_plan,
     fake_worker_llm_factory,
     fake_worker_runner,
 )
@@ -68,6 +69,7 @@ def test_project_cli_fake_llm_is_offline_and_exports(tmp_path):
             "--fake-llm",
             "--display",
             "off",
+            "--render-final",
             "--out",
             str(tmp_path),
         ],
@@ -78,4 +80,39 @@ def test_project_cli_fake_llm_is_offline_and_exports(tmp_path):
     assert len(run_dirs) == 1
     assert (run_dirs[0] / "final.schem").exists()
     assert (run_dirs[0] / "project" / "approved_plan.png").exists()
+    assert (run_dirs[0] / "town_hero.png").exists()
+    assert (run_dirs[0] / "town_contact_sheet.png").exists()
+    assert (run_dirs[0] / "town_topdown.png").exists()
+    assert (run_dirs[0] / "town_render_stats.json").exists()
     assert "Exported:" in result.output
+    assert "Rendered final town:" in result.output
+
+
+def test_project_cli_can_reuse_a_runtime_valid_approved_plan(tmp_path):
+    approved_plan = tmp_path / "approved_plan.json"
+    approved_plan.write_text(json.dumps(fake_project_plan().to_dict()), encoding="utf-8")
+    output_dir = tmp_path / "runs"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "a resumed fortified settlement",
+            "--fake-llm",
+            "--approved-plan",
+            str(approved_plan),
+            "--display",
+            "off",
+            "--out",
+            str(output_dir),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    run_dir = next(output_dir.iterdir())
+    assert (run_dir / "project" / "approved_plan.json").exists()
+    assert (run_dir / "project" / "approved_plan.png").exists()
+    assert not (run_dir / "project" / "planner_session.json").exists()
+    assert (run_dir / "final.schem").exists()
+    event_log = (run_dir / "project_events.jsonl").read_text(encoding="utf-8")
+    assert '"type": "plan_reused"' in event_log
+    assert '"type": "plan_submitted"' not in event_log

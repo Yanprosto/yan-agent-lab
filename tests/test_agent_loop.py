@@ -316,6 +316,60 @@ def test_cutaway_view_on_build_satisfies_finish_interior_check(tmp_path):
     assert not any("Cannot finish" in t for t in _tool_texts(rundir))
 
 
+def test_inspect_rejects_half_of_a_free_camera_pair_then_recovers(tmp_path):
+    class HalfCameraLLM(FakeLLM):
+        def __init__(self):
+            super().__init__()
+            self._script = [
+                self._fixed_submit,
+                self._half_camera,
+                self._verify_query,
+                self._verify_inspect,
+                self._finish,
+            ]
+
+        def _half_camera(self):
+            return _tool_msg("inspect", {"camera_pos": [10, 8, 10]})
+
+    llm = HalfCameraLLM()
+    rundir = RunDir.create("hut", base=str(tmp_path))
+    result = run_agent("hut", llm, Config(max_iters=6, seed=1), rundir)
+
+    assert result.finished is True
+    assert any("camera_pos and look_at must be provided together" in text for text in _tool_texts(rundir))
+
+
+def test_poe_safe_wrapped_query_and_inspect_arguments_are_unwrapped(tmp_path):
+    class WrappedToolsLLM(FakeLLM):
+        def __init__(self):
+            super().__init__()
+            self._script = [
+                self._fixed_submit,
+                self._wrapped_query,
+                self._wrapped_inspect,
+                self._finish,
+            ]
+
+        def _wrapped_query(self):
+            return _tool_msg(
+                "query",
+                {"request": {"mode": "slice", "slice_axis": "y", "slice_at": 0}},
+            )
+
+        def _wrapped_inspect(self):
+            return _tool_msg(
+                "inspect",
+                {"view": {"mode": "iso", "yaw": 2, "cutaway": "x"}},
+            )
+
+    llm = WrappedToolsLLM()
+    rundir = RunDir.create("hut", base=str(tmp_path))
+    result = run_agent("hut", llm, Config(max_iters=6, seed=1), rundir)
+
+    assert result.finished is True
+    assert not any("Unknown query mode" in text for text in _tool_texts(rundir))
+
+
 def test_str_replace_result_reports_block_delta(tmp_path):
     class DeltaLLM(FakeLLM):
         def __init__(self):
