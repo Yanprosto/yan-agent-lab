@@ -63,7 +63,7 @@ The orchestrator wraps the existing agent rather than copying or forking its loo
 
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/)
-- An OpenRouter API key for real planner/worker runs
+- An API key for OpenRouter, Poe, OpenAI, or an explicitly configured compatible endpoint
 - Minecraft 1.21.1 + NeoForge 21.1 for live building
 - JDK 21 recommended for building the mod
 
@@ -75,11 +75,19 @@ cd mcbuild_multiagent_fork
 uv sync --extra dev
 ```
 
-For real LLM runs, create `.env` from `.env.example` and set:
+For real LLM runs, create `.env` from `.env.example`. OpenRouter remains the default:
 
 ```dotenv
 OPENROUTER_API_KEY=your_key_here
 ```
+
+Provider selection is explicit and never inferred from the model id. Set `MCBUILD_LLM_PROVIDER`
+to `poe`, `openai`, `openrouter`, or `openai_compatible`, then set the matching key variable.
+Compatible endpoints additionally require `MCBUILD_LLM_BASE_URL`; their Planner defaults to
+the existing function-tool fallback, while an explicitly supported capability can be selected
+with `MCBUILD_PLAN_JSON_MODE=responses`, `chat_response_format`, or `tool_call`. Planner plan
+generation uses Responses JSON Schema for Poe and direct OpenAI, and Chat JSON Schema for
+OpenRouter. Builder and single-building calls continue to use Chat tool calling.
 
 Offline fake modes do not need an API key or network access.
 

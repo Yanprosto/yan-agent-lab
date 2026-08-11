@@ -540,6 +540,13 @@ def run_agent(
             for tc in tool_calls:
                 name = tc.function.name
                 args = _safe_json_loads(tc.function.arguments)
+                wrapper_key = {
+                    "str_replace": "edit",
+                    "inspect": "view",
+                    "query": "request",
+                }.get(name)
+                if wrapper_key is not None and isinstance(args.get(wrapper_key), dict):
+                    args = args[wrapper_key]
 
                 if name == "finish":
                     missing = []
@@ -780,6 +787,14 @@ def run_agent(
                         continue
                     camera_pos = args.get("camera_pos")
                     look_at = args.get("look_at")
+                    if (camera_pos is None) != (look_at is None):
+                        messages.append(
+                            _tool_result(
+                                tc.id,
+                                "inspect failed: camera_pos and look_at must be provided together",
+                            )
+                        )
+                        continue
                     if camera_pos is not None and look_at is not None:
                         try:
                             cam = Camera(position=tuple(camera_pos), look_at=tuple(look_at))

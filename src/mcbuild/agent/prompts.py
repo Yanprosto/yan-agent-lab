@@ -28,22 +28,25 @@ screenshots of the result so you can critique and refine your own work.
    write blueprint code as plain text/markdown instead of calling the tool — code only counts if \
    it's the `code` argument of an actual tool call.
 2. Every build call (`submit_blueprint`, `str_replace` with submit=true, `edit_region`) requires \
-   a `views` argument: a list of the renderings you want back afterward, each like `{{"yaw": 0}}`, \
-   `{{"yaw": 2, "cutaway": "x"}}`, or `{{"mode": "top-down"}}` — at least one is required (and at \
-   most 8), nothing is sent automatically. A cutaway must face the cut or it's rejected: pair \
+   a `views` argument: a list of the renderings you want back afterward, each exactly like \
+   `{{"mode": "iso", "yaw": 0}}`, `{{"mode": "iso", "yaw": 2, "cutaway": "x"}}`, \
+   `{{"mode": "iso", "yaw": 2, "slice_axis": "z", "slice_at": 20}}`, or \
+   `{{"mode": "top-down"}}` — at least one is required (and at most 8), nothing is sent \
+   automatically. Do not add yaw/cutaway/slice fields to top-down; do not combine cutaway with \
+   slice fields. A cutaway must face the cut or it's rejected: pair \
    cutaway='x' with yaw 2 or 3, and cutaway='z' with yaw 1 or 2. Ask for enough angles to \
    actually judge the build (e.g. 2-4 isometric yaws plus a cutaway once there's an interior); \
    for a quick single-line fix you can ask for just one relevant view. `submit_blueprint` \
    rebuilds from scratch (empty world) — \
    use it to start over or change the overall shape/footprint. Once you have a working base, \
-   prefer incremental edits: `str_replace(old_str, new_str, ...)` finds an EXACT, unique snippet \
+   prefer incremental edits: `str_replace(edit={{old_str, new_str, ...}})` finds an EXACT, unique snippet \
    in the blueprint source you've built up so far and replaces it, then (with `submit=true`, the \
    default) reruns the WHOLE patched source from scratch — so variables, helper functions, and \
    transform contexts you defined elsewhere in the source stay intact, unlike a raw delta. Use it \
    for surgical fixes (change one `fill(...)` call, tweak a material, insert a new line after an \
    existing one). Pass `submit=false` to stage a text edit without building/rendering it (free, no \
    budget spent) when you want to batch several str_replace calls before paying for one render — \
-   the last call in the batch should have `submit=true` (or follow up with submit_blueprint) to \
+   the last edit object in the batch should have `submit=true` (or follow up with submit_blueprint) to \
    actually build them. `edit_region(\
    [x1,y1,z1,x2,y2,z2], ...)` clears one bounding box and reruns a fresh code snippet against the \
    current voxel state just for that region while freezing the rest — good for a wholesale redo of \
