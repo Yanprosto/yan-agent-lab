@@ -25,48 +25,48 @@ Token classifier used: **no**
 
 ### structural
 
-- `mekanismadditions:aqua_plastic_fence` — score 100.889 — mekanism_additions
-- `mekanismadditions:aqua_plastic_fence_gate` — score 100.889 — mekanism_additions
-- `mekanismadditions:black_plastic_fence` — score 100.889 — mekanism_additions
-- `mekanismadditions:black_plastic_fence_gate` — score 100.889 — mekanism_additions
-- `mekanismadditions:blue_plastic_fence` — score 100.889 — mekanism_additions
-- `mekanismadditions:blue_plastic_fence_gate` — score 100.889 — mekanism_additions
-- `mekanismadditions:brown_plastic_fence` — score 100.889 — mekanism_additions
-- `mekanismadditions:brown_plastic_fence_gate` — score 100.889 — mekanism_additions
-- `mekanismadditions:cyan_plastic_fence` — score 100.889 — mekanism_additions
-- `mekanismadditions:cyan_plastic_fence_gate` — score 100.889 — mekanism_additions
-- `mekanismadditions:dark_red_plastic_fence` — score 100.889 — mekanism_additions
-- `mekanismadditions:dark_red_plastic_fence_gate` — score 100.889 — mekanism_additions
+- `minecraft:light_gray_concrete_powder` — score 99.957 — vanilla
+- `minecraft:light_gray_carpet` — score 98.452 — vanilla
+- `minecraft:light_gray_wool` — score 98.452 — vanilla
+- `minecraft:smooth_stone` — score 97.491 — vanilla
+- `minecraft:dead_bubble_coral_block` — score 97.1 — vanilla
+- `mekanismadditions:aqua_slick_plastic` — score 97.032 — mekanism_additions
+- `mekanismadditions:black_slick_plastic` — score 97.032 — mekanism_additions
+- `mekanismadditions:blue_slick_plastic` — score 97.032 — mekanism_additions
+- `mekanismadditions:brown_slick_plastic` — score 97.032 — mekanism_additions
+- `mekanismadditions:cyan_slick_plastic` — score 97.032 — mekanism_additions
+- `mekanismadditions:dark_red_slick_plastic` — score 97.032 — mekanism_additions
+- `mekanismadditions:gray_slick_plastic` — score 97.032 — mekanism_additions
 
 ### floor
 
-- `mekanismadditions:aqua_plastic_fence` — score 100.889 — mekanism_additions
-- `mekanismadditions:aqua_plastic_fence_gate` — score 100.889 — mekanism_additions
-- `mekanismadditions:black_plastic_fence` — score 100.889 — mekanism_additions
-- `mekanismadditions:black_plastic_fence_gate` — score 100.889 — mekanism_additions
-- `mekanismadditions:blue_plastic_fence` — score 100.889 — mekanism_additions
-- `mekanismadditions:blue_plastic_fence_gate` — score 100.889 — mekanism_additions
-- `mekanismadditions:brown_plastic_fence` — score 100.889 — mekanism_additions
-- `mekanismadditions:brown_plastic_fence_gate` — score 100.889 — mekanism_additions
-- `mekanismadditions:cyan_plastic_fence` — score 100.889 — mekanism_additions
-- `mekanismadditions:cyan_plastic_fence_gate` — score 100.889 — mekanism_additions
-- `mekanismadditions:dark_red_plastic_fence` — score 100.889 — mekanism_additions
-- `mekanismadditions:dark_red_plastic_fence_gate` — score 100.889 — mekanism_additions
+- `minecraft:light_gray_concrete_powder` — score 99.957 — vanilla
+- `minecraft:light_gray_carpet` — score 98.452 — vanilla
+- `minecraft:light_gray_wool` — score 98.452 — vanilla
+- `minecraft:smooth_stone` — score 97.491 — vanilla
+- `minecraft:dead_bubble_coral_block` — score 97.1 — vanilla
+- `mekanismadditions:aqua_slick_plastic` — score 97.032 — mekanism_additions
+- `mekanismadditions:black_slick_plastic` — score 97.032 — mekanism_additions
+- `mekanismadditions:blue_slick_plastic` — score 97.032 — mekanism_additions
+- `mekanismadditions:brown_slick_plastic` — score 97.032 — mekanism_additions
+- `mekanismadditions:cyan_slick_plastic` — score 97.032 — mekanism_additions
+- `mekanismadditions:dark_red_slick_plastic` — score 97.032 — mekanism_additions
+- `mekanismadditions:gray_slick_plastic` — score 97.032 — mekanism_additions
 
 ### decor
 
-- `minecraft:jungle_leaves` — score 91.291 — vanilla
-- `minecraft:tripwire_hook` — score 87.051 — vanilla
-- `minecraft:light_gray_candle` — score 86.888 — vanilla
-- `minecraft:end_rod` — score 86.609 — vanilla
-- `mekanismadditions:aqua_glow_panel` — score 86.324 — mekanism_additions
-- `mekanismadditions:black_glow_panel` — score 86.324 — mekanism_additions
-- `mekanismadditions:blue_glow_panel` — score 86.324 — mekanism_additions
-- `mekanismadditions:brown_glow_panel` — score 86.324 — mekanism_additions
-- `mekanismadditions:cyan_glow_panel` — score 86.324 — mekanism_additions
-- `mekanismadditions:dark_red_glow_panel` — score 86.324 — mekanism_additions
-- `mekanismadditions:gray_glow_panel` — score 86.324 — mekanism_additions
-- `mekanismadditions:green_glow_panel` — score 86.324 — mekanism_additions
+- `mekanismadditions:aqua_plastic_transparent` — score 86.069 — mekanism_additions
+- `mekanismadditions:black_plastic_transparent` — score 86.069 — mekanism_additions
+- `mekanismadditions:blue_plastic_transparent` — score 86.069 — mekanism_additions
+- `mekanismadditions:brown_plastic_transparent` — score 86.069 — mekanism_additions
+- `mekanismadditions:cyan_plastic_transparent` — score 86.069 — mekanism_additions
+- `mekanismadditions:dark_red_plastic_transparent` — score 86.069 — mekanism_additions
+- `mekanismadditions:gray_plastic_transparent` — score 86.069 — mekanism_additions
+- `mekanismadditions:green_plastic_transparent` — score 86.069 — mekanism_additions
+- `mekanismadditions:light_blue_plastic_transparent` — score 86.069 — mekanism_additions
+- `mekanismadditions:light_gray_plastic_transparent` — score 86.069 — mekanism_additions
+- `mekanismadditions:lime_plastic_transparent` — score 86.069 — mekanism_additions
+- `mekanismadditions:magenta_plastic_transparent` — score 86.069 — mekanism_additions
 
 ### light
 
@@ -157,6 +157,21 @@ Token classifier used: **no**
 - `mekanismadditions:light_gray_plastic_fence` — score 92.889 — mekanism_additions
 - `mekanismadditions:lime_plastic_fence` — score 92.889 — mekanism_additions
 - `mekanismadditions:magenta_plastic_fence` — score 92.889 — mekanism_additions
+
+### gate
+
+- `mekanismadditions:aqua_plastic_fence_gate` — score 92.889 — mekanism_additions
+- `mekanismadditions:black_plastic_fence_gate` — score 92.889 — mekanism_additions
+- `mekanismadditions:blue_plastic_fence_gate` — score 92.889 — mekanism_additions
+- `mekanismadditions:brown_plastic_fence_gate` — score 92.889 — mekanism_additions
+- `mekanismadditions:cyan_plastic_fence_gate` — score 92.889 — mekanism_additions
+- `mekanismadditions:dark_red_plastic_fence_gate` — score 92.889 — mekanism_additions
+- `mekanismadditions:gray_plastic_fence_gate` — score 92.889 — mekanism_additions
+- `mekanismadditions:green_plastic_fence_gate` — score 92.889 — mekanism_additions
+- `mekanismadditions:light_blue_plastic_fence_gate` — score 92.889 — mekanism_additions
+- `mekanismadditions:light_gray_plastic_fence_gate` — score 92.889 — mekanism_additions
+- `mekanismadditions:lime_plastic_fence_gate` — score 92.889 — mekanism_additions
+- `mekanismadditions:magenta_plastic_fence_gate` — score 92.889 — mekanism_additions
 
 ### door
 
