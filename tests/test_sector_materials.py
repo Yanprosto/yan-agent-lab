@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from mcbuild import palette
-from mcbuild.sector_materials import SectorMaterials, apply_to_industrial_study
+from mcbuild.sector_materials import SectorMaterials, _runtime_reject, apply_to_industrial_study
 
 
 def test_external_block_registration_round_trip():
@@ -36,3 +36,28 @@ def test_apply_materials_replaces_study_palette():
     assert target['D'] == 'minecraft:deepslate_tiles'
     assert target['M'] == 'examplemod:road'
     assert target['L'] == 'examplemod:glow'
+
+
+def test_runtime_rejects_coral_family_by_class_hierarchy():
+    block = {
+        'runtime': {
+            'block_class_hierarchy': [
+                'net.minecraft.world.level.block.BaseCoralPlantTypeBlock',
+                'net.minecraft.world.level.block.Block',
+            ]
+        }
+    }
+    assert _runtime_reject(block)
+
+
+def test_runtime_rejects_rail_family_by_class_hierarchy():
+    block = {
+        'runtime': {
+            'block_class_hierarchy': [
+                'net.minecraft.world.level.block.PoweredRailBlock',
+                'net.minecraft.world.level.block.BaseRailBlock',
+                'net.minecraft.world.level.block.Block',
+            ]
+        }
+    }
+    assert _runtime_reject(block)
