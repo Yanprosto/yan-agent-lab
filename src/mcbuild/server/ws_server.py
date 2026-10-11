@@ -17,6 +17,7 @@ from mcbuild.server.project_session import run_project_session
 from mcbuild.server.run_logger import LoggedConnection, RunRecorder
 from mcbuild.server.session import run_build_session
 from mcbuild.server.skill_store import list_skills, save_skill
+from mcbuild.server.spatial_search import SpatialCandidate, generate_spatial_candidates
 from mcbuild.server.topology_search import TopologyCandidate, generate_two_branch_candidates
 
 # Only one task runs at a time in this version; a second connection while a task is in
@@ -66,7 +67,7 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
         elif command == "mekanism":
             await _run_mekanism_experiment_session(logged_connection)
         else:
-            await _run_topology_search_session(logged_connection)
+            await _run_spatial_search_session(logged_connection)
     except Exception as exc:
         recorder.fail_from_exception(exc)
         try:
@@ -1249,6 +1250,353 @@ async def _run_topology_search_session(connection: ServerConnection) -> None:
         f"left={best['left_items']} right={best['right_items']} "
         f"blocks={best['actual_blocks']} score={best['score']} "
         "skill=mekanism_two_branch_distribution_v2 worldClean=true"
+    ))
+
+
+def _axis_geometry(
+    candidate: SpatialCandidate,
+) -> dict[str, Any]:
+    """Resolve one spatial candidate into exact relative coordinates and source-facing sides."""
+    source = {"x": 6, "y": 4, "z": 0}
+    if candidate.axis == "x":
+        neg = (-1, 0)
+        pos = (1, 0)
+        neg_pull_side = "east"
+        pos_pull_side = "west"
+    elif candidate.axis == "z":
+        neg = (0, -1)
+        pos = (0, 1)
+        neg_pull_side = "south"
+        pos_pull_side = "north"
+    else:
+        raise RuntimeError(f"unsupported axis: {candidate.axis}")
+
+    def point(dx: int, dz: int, distance: int, y: int = 4) -> dict[str, int]:
+        return {
+            "x": source["x"] + dx * distance,
+            "y": y,
+            "z": source["z"] + dz * distance,
+        }
+
+    left_pull = point(*neg, 1)
+    right_pull = point(*pos, 1)
+    left_arms = [point(*neg, distance) for distance in range(2, 2 + candidate.left_arm)]
+    right_arms = [point(*pos, distance) for distance in range(2, 2 + candidate.right_arm)]
+
+    left_end_distance = 1 + candidate.left_arm
+    right_end_distance = 1 + candidate.right_arm
+
+    if candidate.sink_drop:
+        left_sink = point(*neg, left_end_distance, y=4 - candidate.sink_drop)
+        right_sink = point(*pos, right_end_distance, y=4 - candidate.sink_drop)
+    else:
+        left_sink = point(*neg, left_end_distance + 1)
+        right_sink = point(*pos, right_end_distance + 1)
+
+    return {
+        "source": source,
+        "left_pull": left_pull,
+        "right_pull": right_pull,
+        "left_arms": left_arms,
+        "right_arms": right_arms,
+        "left_sink": left_sink,
+        "right_sink": right_sink,
+        "left_pull_side": neg_pull_side,
+        "right_pull_side": pos_pull_side,
+    }
+
+
+async def _build_spatial_candidate(
+    connection: ServerConnection,
+    candidate: SpatialCandidate,
+) -> dict[str, Any]:
+    """Build one geometry mutation from the v2 primitive and observe real item flow."""
+    if candidate.family == "shared_t":
+        observed = await _build_splitter_variant_a(connection, candidate.candidate_id)
+        observed["candidate"] = candidate.as_dict()
+        observed["actual_blocks"] = 7
+        return observed
+
+    if candidate.family != "dual_independent_pull":
+        raise RuntimeError(f"unsupported spatial family: {candidate.family}")
+
+    name = candidate.candidate_id
+    g = _axis_geometry(candidate)
+    await connection.send(protocol.chat(
+        f"[yan-agent] SPATIAL {name}: axis={candidate.axis} "
+        f"leftArm={candidate.left_arm} rightArm={candidate.right_arm} "
+        f"sinkDrop={candidate.sink_drop} extractors={candidate.extractor_count}"
+    ))
+    await connection.send(protocol.chat(f"[yan-agent] {name}: {candidate.description}"))
+
+    placements: list[tuple[str, dict[str, int], str]] = [
+        ("source", g["source"], "minecraft:chest[facing=north,type=single,waterlogged=false]"),
+        ("left-pull", g["left_pull"], "mekanism:basic_logistical_transporter"),
+        ("right-pull", g["right_pull"], "mekanism:basic_logistical_transporter"),
+    ]
+    placements.extend(
+        (f"left-arm-{i + 1}", pos, "mekanism:basic_logistical_transporter")
+        for i, pos in enumerate(g["left_arms"])
+    )
+    placements.extend(
+        (f"right-arm-{i + 1}", pos, "mekanism:basic_logistical_transporter")
+        for i, pos in enumerate(g["right_arms"])
+    )
+    placements.extend(
+        [
+            ("left-sink", g["left_sink"], "minecraft:chest[facing=north,type=single,waterlogged=false]"),
+            ("right-sink", g["right_sink"], "minecraft:chest[facing=north,type=single,waterlogged=false]"),
+        ]
+    )
+
+    for label, pos, block_id in placements:
+        await _action(connection, f"{name}-place-{label}", "place_block", {**pos, "block": block_id})
+
+    await _action(connection, f"{name}-settle", "wait_ticks", {"ticks": 15}, timeout=5.0)
+
+    left_cfg = await _action(
+        connection,
+        f"{name}-left-mode",
+        "mek_set_transporter_mode",
+        {**g["left_pull"], "side": g["left_pull_side"], "mode": "PULL"},
+    )
+    right_cfg = await _action(
+        connection,
+        f"{name}-right-mode",
+        "mek_set_transporter_mode",
+        {**g["right_pull"], "side": g["right_pull_side"], "mode": "PULL"},
+    )
+    await connection.send(protocol.chat(
+        f"[yan-agent] {name}: CONFIG left={left_cfg.get('after')}({g['left_pull_side']}) "
+        f"right={right_cfg.get('after')}({g['right_pull_side']})"
+    ))
+
+    seeded = await _action(
+        connection,
+        f"{name}-seed",
+        "seed_item",
+        {**g["source"], "item": "minecraft:raw_iron", "count": 6},
+    )
+    await connection.send(protocol.chat(
+        f"[yan-agent] {name}: seeded={seeded.get('inserted')}/6; observing transformed geometry..."
+    ))
+    await _action(connection, f"{name}-wait", "wait_ticks", {"ticks": 140}, timeout=15.0)
+
+    return {
+        "source": await _action(connection, f"{name}-source", "read_inventory", g["source"]),
+        "left": await _action(connection, f"{name}-left", "read_inventory", g["left_sink"]),
+        "right": await _action(connection, f"{name}-right", "read_inventory", g["right_sink"]),
+        "drain_positions": [
+            ("source", g["source"]),
+            ("left", g["left_sink"]),
+            ("right", g["right_sink"]),
+        ],
+        "topology": candidate.family,
+        "candidate": candidate.as_dict(),
+        "actual_blocks": len(placements),
+        "geometry": g,
+    }
+
+
+def _score_spatial_result(
+    *,
+    source_n: int,
+    left_n: int,
+    right_n: int,
+    candidate: SpatialCandidate,
+    block_count: int,
+) -> tuple[bool, int, int]:
+    """Correctness first, then fairness, material cost, then spatial compactness."""
+    total = source_n + left_n + right_n
+    conserved = total == 6
+    both_live = left_n > 0 and right_n > 0
+    passed = conserved and source_n == 0 and both_live
+    imbalance = abs(left_n - right_n)
+    if not passed:
+        return False, -10000 - imbalance * 100 - block_count * 10, imbalance
+
+    spatial_penalty = candidate.horizontal_span * 2 + max(0, candidate.vertical_span - 1) * 3
+    score = 10000 - imbalance * 1000 - block_count * 20 - spatial_penalty
+    return True, score, imbalance
+
+
+async def _run_spatial_search_session(connection: ServerConnection) -> None:
+    """v0.9: search rotations, asymmetric lengths and vertical forms from the v2 skill."""
+    await connection.send(protocol.hello("yan-spatial-search-v0.9"))
+
+    candidates, source_skill = generate_spatial_candidates()
+    await connection.send(protocol.chat(
+        f"[yan-agent] v0.9 MEMORY: mekanism_two_branch_distribution_v2="
+        f"{'loaded' if source_skill else 'missing'}; spatialCandidates={len(candidates)}"
+    ))
+    await connection.send(protocol.chat(
+        "[yan-agent] v0.9 objective: test geometric transformations of a verified skill. "
+        "Priority = correctness > balance > material cost > spatial compactness."
+    ))
+
+    for candidate in candidates:
+        await connection.send(protocol.chat(
+            f"[yan-agent] GENERATED {candidate.candidate_id}: family={candidate.family} "
+            f"axis={candidate.axis} arms={candidate.left_arm}/{candidate.right_arm} "
+            f"drop={candidate.sink_drop} extractors={candidate.extractor_count} "
+            f"blocks~{candidate.estimated_blocks}"
+        ))
+
+    # Broad union envelope for all v0.9 forms plus the old shared-T control.
+    footprint = [
+        {"x": x, "y": y, "z": z}
+        for x in range(2, 11)
+        for y in range(1, 5)
+        for z in range(-4, 5)
+    ]
+
+    history: list[dict[str, Any]] = []
+    try:
+        initial = await _action(
+            connection,
+            "spatial-footprint",
+            "inspect_blocks",
+            {"positions": footprint},
+        )
+        occupied = [b for b in (initial.get("blocks") or []) if not b.get("is_air", False)]
+        if occupied:
+            raise RuntimeError(
+                f"spatial-search footprint is not empty; occupied_count={len(occupied)} "
+                f"sample={occupied[:8]}"
+            )
+
+        for index, candidate in enumerate(candidates, start=1):
+            await connection.send(protocol.chat(
+                f"[yan-agent] BENCHMARK {index}/{len(candidates)} {candidate.candidate_id}"
+            ))
+            observed = await _build_spatial_candidate(connection, candidate)
+
+            source_n = int(observed["source"].get("total_items") or 0)
+            left_n = int(observed["left"].get("total_items") or 0)
+            right_n = int(observed["right"].get("total_items") or 0)
+            total = source_n + left_n + right_n
+            block_count = int(observed.get("actual_blocks") or candidate.estimated_blocks)
+            passed, score, imbalance = _score_spatial_result(
+                source_n=source_n,
+                left_n=left_n,
+                right_n=right_n,
+                candidate=candidate,
+                block_count=block_count,
+            )
+
+            row = {
+                **candidate.as_dict(),
+                "source_items": source_n,
+                "left_items": left_n,
+                "right_items": right_n,
+                "total": total,
+                "conserved": total == 6,
+                "both_live": left_n > 0 and right_n > 0,
+                "imbalance": imbalance,
+                "actual_blocks": block_count,
+                "score": score,
+                "passed": passed,
+            }
+            history.append(row)
+
+            await connection.send(protocol.chat(
+                f"[yan-agent] RESULT {candidate.candidate_id}: source={source_n} "
+                f"left={left_n} right={right_n} blocks={block_count} "
+                f"imbalance={imbalance} score={score} pass={passed}"
+            ))
+
+            await _cleanup_splitter_variant(
+                connection,
+                name=candidate.candidate_id,
+                drain_positions=observed["drain_positions"],
+            )
+
+        passing = [row for row in history if row["passed"]]
+        if not passing:
+            raise RuntimeError(f"all spatial candidates failed: {history}")
+
+        best = max(passing, key=lambda row: row["score"])
+        validated_transforms = [
+            {
+                "candidate_id": row["candidate_id"],
+                "axis": row["axis"],
+                "left_arm": row["left_arm"],
+                "right_arm": row["right_arm"],
+                "sink_drop": row["sink_drop"],
+                "extractor_count": row["extractor_count"],
+                "left": row["left_items"],
+                "right": row["right_items"],
+                "blocks": row["actual_blocks"],
+                "score": row["score"],
+            }
+            for row in passing
+        ]
+
+        await connection.send(protocol.chat(
+            f"[yan-agent] SELECT BEST {best['candidate_id']}: axis={best['axis']} "
+            f"arms={best['left_arm']}/{best['right_arm']} drop={best['sink_drop']} "
+            f"left={best['left_items']} right={best['right_items']} "
+            f"blocks={best['actual_blocks']} score={best['score']}"
+        ))
+        await connection.send(protocol.chat(
+            f"[yan-agent] ROBUSTNESS: {len(validated_transforms)}/{len(history)} "
+            "spatial transforms preserved the functional contract."
+        ))
+
+        skill_path = save_skill(
+            "mekanism_two_branch_distribution_v3",
+            description=(
+                "Spatially validated two-branch Mekanism distribution skill. "
+                "Includes rotations, asymmetric branch lengths and vertical sink mutations."
+            ),
+            implementation={
+                "family": best["family"],
+                "axis": best["axis"],
+                "left_arm": best["left_arm"],
+                "right_arm": best["right_arm"],
+                "sink_drop": best["sink_drop"],
+                "extractor_count": best["extractor_count"],
+                "actual_blocks": best["actual_blocks"],
+                "source_mode": "PULL",
+                "selection_policy": (
+                    "correctness > balance > material cost > spatial compactness"
+                ),
+                "candidate_id": best["candidate_id"],
+                "validated_transforms": validated_transforms,
+            },
+            verification={
+                "source": best["source_items"],
+                "left": best["left_items"],
+                "right": best["right_items"],
+                "conserved": best["conserved"],
+                "imbalance": best["imbalance"],
+                "score": best["score"],
+                "candidate_count": len(history),
+                "passing_count": len(passing),
+                "all_results": history,
+            },
+            source_experiment="yan-spatial-search-v0.9",
+        )
+        await connection.send(protocol.chat(
+            f"[yan-agent] MEMORY: saved spatial skill {skill_path.name}; knownSkills={list_skills()}"
+        ))
+
+    except (RuntimeError, KeyError, TypeError, ValueError) as exc:
+        try:
+            await _action(connection, "spatial-emergency-rollback", "rollback_session", {})
+        except RuntimeError:
+            pass
+        await connection.send(protocol.error(f"spatial search v0.9 FAIL: {exc}"))
+        return
+
+    await connection.send(protocol.finish(
+        "spatial search v0.9 PASS: "
+        f"generated={len(candidates)} benchmarked={len(history)} passing={len(passing)} "
+        f"best={best['candidate_id']} axis={best['axis']} "
+        f"arms={best['left_arm']}/{best['right_arm']} drop={best['sink_drop']} "
+        f"left={best['left_items']} right={best['right_items']} "
+        f"blocks={best['actual_blocks']} score={best['score']} "
+        "skill=mekanism_two_branch_distribution_v3 worldClean=true"
     ))
 
 
