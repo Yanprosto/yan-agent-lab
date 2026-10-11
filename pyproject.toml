@@ -23,6 +23,7 @@ dependencies = [
 mcbuild = "mcbuild.cli:main"
 mcbuild-project = "mcbuild.orchestrator.cli:main"
 mcbuild-server = "mcbuild.server.ws_server:main"
+mcbuild-server-dev = "mcbuild.server.reload:main"
 
 [project.optional-dependencies]
 dev = [
