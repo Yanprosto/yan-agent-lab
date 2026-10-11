@@ -1741,26 +1741,62 @@ async def _remove_environment_branch(
     ))
 
 
+def _transit_positions(branches: list[BranchRoute]) -> list[dict[str, int]]:
+    seen: set[tuple[int, int, int]] = set()
+    result: list[dict[str, int]] = []
+    for branch in branches:
+        for pos in branch.path:
+            if pos in seen:
+                continue
+            seen.add(pos)
+            result.append(_pos_args(pos))
+    return result
+
+
 async def _read_environment_result(
     connection: ServerConnection,
     *,
     source: tuple[int, int, int],
     sinks: tuple[tuple[int, int, int], tuple[int, int, int]],
+    branches: list[BranchRoute],
     label: str,
 ) -> dict[str, Any]:
     src = await _action(connection, f"{label}-read-source", "read_inventory", _pos_args(source))
     left = await _action(connection, f"{label}-read-sink-1", "read_inventory", _pos_args(sinks[0]))
     right = await _action(connection, f"{label}-read-sink-2", "read_inventory", _pos_args(sinks[1]))
+    positions = _transit_positions(branches)
+    transit = (
+        await _action(
+            connection,
+            f"{label}-read-transit",
+            "mek_read_transit",
+            {"positions": positions},
+        )
+        if positions
+        else {"total_items": 0, "stack_count": 0, "items": []}
+    )
+
     source_n = int(src.get("total_items") or 0)
     left_n = int(left.get("total_items") or 0)
     right_n = int(right.get("total_items") or 0)
-    total = source_n + left_n + right_n
-    passed = source_n == 0 and left_n > 0 and right_n > 0 and total == 6
+    transit_n = int(transit.get("total_items") or 0)
+    total = source_n + left_n + right_n + transit_n
+    passed = (
+        source_n == 0
+        and left_n > 0
+        and right_n > 0
+        and transit_n == 0
+        and total == 6
+    )
     return {
         "source": source_n,
         "left": left_n,
         "right": right_n,
+        "transit": transit_n,
+        "transit_stacks": int(transit.get("stack_count") or 0),
+        "transit_items": transit.get("items") or [],
         "total": total,
+        "conserved": total == 6,
         "passed": passed,
         "imbalance": abs(left_n - right_n),
     }
@@ -1771,9 +1807,23 @@ async def _reset_environment_items(
     *,
     source: tuple[int, int, int],
     sinks: tuple[tuple[int, int, int], tuple[int, int, int]],
+    branches: list[BranchRoute],
     label: str,
 ) -> None:
-    removed = 0
+    positions = _transit_positions(branches)
+    cleared_transit = 0
+    cleared_stacks = 0
+    if positions:
+        cleared = await _action(
+            connection,
+            f"{label}-clear-transit",
+            "mek_clear_transit",
+            {"positions": positions},
+        )
+        cleared_transit = int(cleared.get("cleared_items") or 0)
+        cleared_stacks = int(cleared.get("cleared_stacks") or 0)
+
+    drained_items = 0
     for role, pos in (("source", source), ("sink-1", sinks[0]), ("sink-2", sinks[1])):
         drained = await _action(
             connection,
@@ -1781,7 +1831,15 @@ async def _reset_environment_items(
             "drain_inventory",
             {**_pos_args(pos), "item": "minecraft:raw_iron"},
         )
-        removed += int(drained.get("removed_total") or 0)
+        drained_items += int(drained.get("removed_total") or 0)
+
+    accounted = cleared_transit + drained_items
+    if accounted != 6:
+        raise RuntimeError(
+            f"{label}: reset conservation failure before reseed: "
+            f"transit={cleared_transit} inventories={drained_items} accounted={accounted} expected=6"
+        )
+
     seeded = await _action(
         connection,
         f"{label}-reseed",
@@ -1789,15 +1847,18 @@ async def _reset_environment_items(
         {**_pos_args(source), "item": "minecraft:raw_iron", "count": 6},
     )
     await connection.send(protocol.chat(
-        f"[yan-agent] {label}: RESET ITEMS removed={removed} reseeded={seeded.get('inserted')}/6"
+        f"[yan-agent] {label}: RESET TRANSIT-AWARE "
+        f"transitItems={cleared_transit} transitStacks={cleared_stacks} "
+        f"inventoryItems={drained_items} accounted={accounted}/6 "
+        f"reseeded={seeded.get('inserted')}/6"
     ))
 
 
 async def _run_environment_build_session(connection: ServerConnection) -> None:
-    """v1.0: discover an existing scene, route around obstacles, locally repair, leave success built."""
-    await connection.send(protocol.hello("yan-environment-builder-v1.0"))
+    """v1.2: transit-aware environment repair with exact conservation."""
+    await connection.send(protocol.hello("yan-transit-aware-v1.2"))
     await connection.send(protocol.chat(
-        "[yan-agent] v1.0: scanning existing world. I will not create or move endpoints/obstacles."
+        "[yan-agent] v1.2: scanning existing world with transporter-transit accounting enabled."
     ))
 
     skill = load_skill("mekanism_two_branch_distribution_v3")
@@ -1866,13 +1927,13 @@ async def _run_environment_build_session(connection: ServerConnection) -> None:
 
         await _action(connection, "env-initial-flow", "wait_ticks", {"ticks": 180}, timeout=18.0)
         result = await _read_environment_result(
-            connection, source=source, sinks=sinks, label="env-initial"
+            connection, source=source, sinks=sinks, branches=active_branches, label="env-initial"
         )
         plan_history.append({"plan": current_plan.as_dict(), "result": result})
         await connection.send(protocol.chat(
             f"[yan-agent] OBSERVE initial: source={result['source']} "
-            f"sink1={result['left']} sink2={result['right']} total={result['total']} "
-            f"pass={result['passed']}"
+            f"sink1={result['left']} sink2={result['right']} transit={result['transit']} "
+            f"total={result['total']} conserved={result['conserved']} pass={result['passed']}"
         ))
 
         if not result["passed"]:
@@ -1898,7 +1959,7 @@ async def _run_environment_build_session(connection: ServerConnection) -> None:
                     f"sink{working_index + 1} is live. Keeping working branch and repairing only failed branch."
                 ))
                 await _reset_environment_items(
-                    connection, source=source, sinks=sinks, label="env-local-repair"
+                    connection, source=source, sinks=sinks, branches=active_branches, label="env-local-repair"
                 )
                 await _remove_environment_branch(
                     connection,
@@ -1942,6 +2003,7 @@ async def _run_environment_build_session(connection: ServerConnection) -> None:
                         connection,
                         source=source,
                         sinks=sinks,
+                        branches=active_branches,
                         label=f"repair-{repair_count}",
                     )
                     plan_history.append({
@@ -1951,7 +2013,8 @@ async def _run_environment_build_session(connection: ServerConnection) -> None:
                     })
                     await connection.send(protocol.chat(
                         f"[yan-agent] OBSERVE repair-{repair_count}: source={result['source']} "
-                        f"sink1={result['left']} sink2={result['right']} pass={result['passed']}"
+                        f"sink1={result['left']} sink2={result['right']} transit={result['transit']} "
+                        f"total={result['total']} conserved={result['conserved']} pass={result['passed']}"
                     ))
                     if result["passed"]:
                         repaired = True
@@ -1961,6 +2024,7 @@ async def _run_environment_build_session(connection: ServerConnection) -> None:
                         connection,
                         source=source,
                         sinks=sinks,
+                        branches=active_branches,
                         label=f"repair-{repair_count}-reset",
                     )
                     await _remove_environment_branch(
@@ -1979,7 +2043,7 @@ async def _run_environment_build_session(connection: ServerConnection) -> None:
                     "falling back to a full skill-informed separated plan."
                 ))
                 await _reset_environment_items(
-                    connection, source=source, sinks=sinks, label="env-full-replan"
+                    connection, source=source, sinks=sinks, branches=active_branches, label="env-full-replan"
                 )
                 rolled = await _action(connection, "env-full-rollback", "rollback_session", {})
                 active_branches.clear()
@@ -1999,7 +2063,7 @@ async def _run_environment_build_session(connection: ServerConnection) -> None:
                     active_branches.append(branch)
                 await _action(connection, "env-fallback-flow", "wait_ticks", {"ticks": 180}, timeout=18.0)
                 result = await _read_environment_result(
-                    connection, source=source, sinks=sinks, label="env-fallback"
+                    connection, source=source, sinks=sinks, branches=active_branches, label="env-fallback"
                 )
                 plan_history.append({"plan": fallback.as_dict(), "result": result})
                 if not result["passed"]:
@@ -2034,7 +2098,7 @@ async def _run_environment_build_session(connection: ServerConnection) -> None:
             f"repairCount={repair_count} skill={skill_path.name}"
         ))
         await connection.send(protocol.finish(
-            "environment builder v1.0 PASS: "
+            "transit-aware environment builder v1.2 PASS: "
             f"source={result['source']} sink1={result['left']} sink2={result['right']} "
             f"repairs={repair_count} obstacles={scene['obstacle_count']} "
             "worldPreserved=true skill=environment_aware_two_branch_v1"
@@ -2042,20 +2106,21 @@ async def _run_environment_build_session(connection: ServerConnection) -> None:
 
     except (RuntimeError, KeyError, TypeError, ValueError) as exc:
         try:
-            rolled = await _action(connection, "env-emergency-rollback", "rollback_session", {})
-            await connection.send(protocol.chat(
-                f"[yan-agent] EMERGENCY ROLLBACK removed={rolled.get('removed')}"
-            ))
-            if scene is not None:
+            if scene is not None and active_branches:
                 await _reset_environment_items(
                     connection,
                     source=scene["source"],
                     sinks=scene["sinks"],
+                    branches=active_branches,
                     label="env-emergency-reset",
                 )
+            rolled = await _action(connection, "env-emergency-rollback", "rollback_session", {})
+            await connection.send(protocol.chat(
+                f"[yan-agent] EMERGENCY ROLLBACK removed={rolled.get('removed')}"
+            ))
         except RuntimeError:
             pass
-        await connection.send(protocol.error(f"environment builder v1.0 FAIL: {exc}"))
+        await connection.send(protocol.error(f"transit-aware environment builder v1.2 FAIL: {exc}"))
 
 
 async def _serve(host: str, port: int, config: Config) -> None:
