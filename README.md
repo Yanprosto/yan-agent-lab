@@ -1,5 +1,15 @@
 # mcbuild Multi-Agent
 
+## YAN: project context and completed audit
+
+- [Project concept and long-term goal](docs/YAN_PROJECT_CONCEPT.md)
+- [Completed Mekanism audit: results, evidence and original archives](docs/recon/MEKANISM_AUDIT.md)
+- [Structured model defaults](docs/recon/mekanism/oracle_defaults.json)
+- [Agent context-recovery rules](AGENTS.md)
+
+The audit already exists. Read these sources before proposing another broad recon.
+
+
 **Turn a text prompt into a Minecraft build — as one self-editing building agent, or as a coordinated multi-component project.**
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)

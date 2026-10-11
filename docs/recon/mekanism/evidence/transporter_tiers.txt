@@ -1,0 +1,159 @@
+Source: targeted_javap.txt in MEKANISM_TARGETED_RECON_20261011_012311.zip
+Original line numbers are preserved below.
+
+--- original lines 454-485 ---
+454: CLASS: mekanism.common.tier.TransporterTier
+455: ====================================================================================================
+456: Compiled from "TransporterTier.java"
+457: public final class mekanism.common.tier.TransporterTier extends java.lang.Enum<mekanism.common.tier.TransporterTier> implements mekanism.api.tier.ITier {
+458:   public static final mekanism.common.tier.TransporterTier BASIC;
+459:     descriptor: Lmekanism/common/tier/TransporterTier;
+460: 
+461:   public static final mekanism.common.tier.TransporterTier ADVANCED;
+462:     descriptor: Lmekanism/common/tier/TransporterTier;
+463: 
+464:   public static final mekanism.common.tier.TransporterTier ELITE;
+465:     descriptor: Lmekanism/common/tier/TransporterTier;
+466: 
+467:   public static final mekanism.common.tier.TransporterTier ULTIMATE;
+468:     descriptor: Lmekanism/common/tier/TransporterTier;
+469: 
+470:   private final int basePull;
+471:     descriptor: I
+472: 
+473:   private final int baseSpeed;
+474:     descriptor: I
+475: 
+476:   private final mekanism.api.tier.BaseTier baseTier;
+477:     descriptor: Lmekanism/api/tier/BaseTier;
+478: 
+479:   private mekanism.common.config.value.CachedIntValue pullReference;
+480:     descriptor: Lmekanism/common/config/value/CachedIntValue;
+481: 
+482:   private mekanism.common.config.value.CachedIntValue speedReference;
+483:     descriptor: Lmekanism/common/config/value/CachedIntValue;
+484: 
+485:   private static final mekanism.common.tier.TransporterTier[] $VALUES;
+
+--- original lines 505-522 ---
+505:   private mekanism.common.tier.TransporterTier(mekanism.api.tier.BaseTier, int, int);
+506:     descriptor: (Ljava/lang/String;ILmekanism/api/tier/BaseTier;II)V
+507:     Code:
+508:        0: aload_0
+509:        1: aload_1
+510:        2: iload_2
+511:        3: invokespecial #31                 // Method java/lang/Enum."<init>":(Ljava/lang/String;I)V
+512:        6: aload_0
+513:        7: iload         4
+514:        9: putfield      #35                 // Field basePull:I
+515:       12: aload_0
+516:       13: iload         5
+517:       15: putfield      #39                 // Field baseSpeed:I
+518:       18: aload_0
+519:       19: aload_3
+520:       20: putfield      #42                 // Field baseTier:Lmekanism/api/tier/BaseTier;
+521:       23: return
+522: 
+
+--- original lines 554-610 ---
+554:        0: aload_0
+555:        1: getfield      #42                 // Field baseTier:Lmekanism/api/tier/BaseTier;
+556:        4: areturn
+557: 
+558:   public int getPullAmount();
+559:     descriptor: ()I
+560:     Code:
+561:        0: aload_0
+562:        1: getfield      #55                 // Field pullReference:Lmekanism/common/config/value/CachedIntValue;
+563:        4: ifnonnull     14
+564:        7: aload_0
+565:        8: invokevirtual #59                 // Method getBasePull:()I
+566:       11: goto          21
+567:       14: aload_0
+568:       15: getfield      #55                 // Field pullReference:Lmekanism/common/config/value/CachedIntValue;
+569:       18: invokevirtual #63                 // Method mekanism/common/config/value/CachedIntValue.getOrDefault:()I
+570:       21: ireturn
+571: 
+572:   public int getSpeed();
+573:     descriptor: ()I
+574:     Code:
+575:        0: aload_0
+576:        1: getfield      #68                 // Field speedReference:Lmekanism/common/config/value/CachedIntValue;
+577:        4: ifnonnull     14
+578:        7: aload_0
+579:        8: invokevirtual #71                 // Method getBaseSpeed:()I
+580:       11: goto          21
+581:       14: aload_0
+582:       15: getfield      #68                 // Field speedReference:Lmekanism/common/config/value/CachedIntValue;
+583:       18: invokevirtual #63                 // Method mekanism/common/config/value/CachedIntValue.getOrDefault:()I
+584:       21: ireturn
+585: 
+586:   public int getBasePull();
+587:     descriptor: ()I
+588:     Code:
+589:        0: aload_0
+590:        1: getfield      #35                 // Field basePull:I
+591:        4: ireturn
+592: 
+593:   public int getBaseSpeed();
+594:     descriptor: ()I
+595:     Code:
+596:        0: aload_0
+597:        1: getfield      #39                 // Field baseSpeed:I
+598:        4: ireturn
+599: 
+600:   public void setConfigReference(mekanism.common.config.value.CachedIntValue, mekanism.common.config.value.CachedIntValue);
+601:     descriptor: (Lmekanism/common/config/value/CachedIntValue;Lmekanism/common/config/value/CachedIntValue;)V
+602:     Code:
+603:        0: aload_0
+604:        1: aload_1
+605:        2: putfield      #55                 // Field pullReference:Lmekanism/common/config/value/CachedIntValue;
+606:        5: aload_0
+607:        6: aload_2
+608:        7: putfield      #68                 // Field speedReference:Lmekanism/common/config/value/CachedIntValue;
+609:       10: return
+610: 
+
+--- original lines 635-675 ---
+635:     descriptor: ()V
+636:     Code:
+637:        0: new           #1                  // class mekanism/common/tier/TransporterTier
+638:        3: dup
+639:        4: ldc           #74                 // String BASIC
+640:        6: iconst_0
+641:        7: getstatic     #75                 // Field mekanism/api/tier/BaseTier.BASIC:Lmekanism/api/tier/BaseTier;
+642:       10: iconst_1
+643:       11: iconst_5
+644:       12: invokespecial #79                 // Method "<init>":(Ljava/lang/String;ILmekanism/api/tier/BaseTier;II)V
+645:       15: putstatic     #3                  // Field BASIC:Lmekanism/common/tier/TransporterTier;
+646:       18: new           #1                  // class mekanism/common/tier/TransporterTier
+647:       21: dup
+648:       22: ldc           #82                 // String ADVANCED
+649:       24: iconst_1
+650:       25: getstatic     #83                 // Field mekanism/api/tier/BaseTier.ADVANCED:Lmekanism/api/tier/BaseTier;
+651:       28: bipush        16
+652:       30: bipush        10
+653:       32: invokespecial #79                 // Method "<init>":(Ljava/lang/String;ILmekanism/api/tier/BaseTier;II)V
+654:       35: putstatic     #7                  // Field ADVANCED:Lmekanism/common/tier/TransporterTier;
+655:       38: new           #1                  // class mekanism/common/tier/TransporterTier
+656:       41: dup
+657:       42: ldc           #85                 // String ELITE
+658:       44: iconst_2
+659:       45: getstatic     #86                 // Field mekanism/api/tier/BaseTier.ELITE:Lmekanism/api/tier/BaseTier;
+660:       48: bipush        32
+661:       50: bipush        20
+662:       52: invokespecial #79                 // Method "<init>":(Ljava/lang/String;ILmekanism/api/tier/BaseTier;II)V
+663:       55: putstatic     #10                 // Field ELITE:Lmekanism/common/tier/TransporterTier;
+664:       58: new           #1                  // class mekanism/common/tier/TransporterTier
+665:       61: dup
+666:       62: ldc           #88                 // String ULTIMATE
+667:       64: iconst_3
+668:       65: getstatic     #89                 // Field mekanism/api/tier/BaseTier.ULTIMATE:Lmekanism/api/tier/BaseTier;
+669:       68: bipush        64
+670:       70: bipush        50
+671:       72: invokespecial #79                 // Method "<init>":(Ljava/lang/String;ILmekanism/api/tier/BaseTier;II)V
+672:       75: putstatic     #13                 // Field ULTIMATE:Lmekanism/common/tier/TransporterTier;
+673:       78: invokestatic  #91                 // Method $values:()[Lmekanism/common/tier/TransporterTier;
+674:       81: putstatic     #16                 // Field $VALUES:[Lmekanism/common/tier/TransporterTier;
+675:       84: return
+
