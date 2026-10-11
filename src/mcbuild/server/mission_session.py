@@ -188,9 +188,9 @@ async def _build_factory(connection, layout: FactoryLayout) -> None:
 
     await _place(connection, "mission-source", layout.source, "minecraft:chest[facing=north,type=single,waterlogged=false]")
     await _place(connection, "mission-sink", layout.sink, "minecraft:chest[facing=north,type=single,waterlogged=false]")
-    await _place(connection, "mission-smelter-a", layout.smelter_a, "mekanism:energized_smelter[facing=east]")
-    await _place(connection, "mission-smelter-b", layout.smelter_b, "mekanism:energized_smelter[facing=east]")
-    await _place(connection, "mission-cube", layout.cube, "mekanism:creative_energy_cube[facing=east]")
+    await _place(connection, "mission-smelter-a", layout.smelter_a, "mekanism:energized_smelter")
+    await _place(connection, "mission-smelter-b", layout.smelter_b, "mekanism:energized_smelter")
+    await _place(connection, "mission-cube", layout.cube, "mekanism:creative_energy_cube")
     await _place(connection, "mission-energy-a", layout.energy_a, "mekanism:basic_universal_cable")
     await _place(connection, "mission-energy-b", layout.energy_b, "mekanism:basic_universal_cable")
 
@@ -228,8 +228,11 @@ async def _build_factory(connection, layout: FactoryLayout) -> None:
     ))
 
 
-async def _item_count(connection, label: str, p: P, item: str) -> tuple[int, dict[str, Any]]:
-    inv = await _action(connection, label, "read_inventory", p.args())
+async def _item_count(connection, label: str, p: P, item: str, side: str | None = None) -> tuple[int, dict[str, Any]]:
+    args = p.args()
+    if side is not None:
+        args = {**args, "side": side}
+    inv = await _action(connection, label, "read_inventory", args)
     count = sum(
         int(row.get("count") or 0)
         for row in (inv.get("items") or [])
@@ -249,8 +252,8 @@ async def _read_transit(connection, layout: FactoryLayout, label: str) -> dict[s
 
 async def _verify_power(connection, layout: FactoryLayout) -> dict[str, int]:
     await _wait(connection, "mission-power-settle", 40, 8.0)
-    a = await _action(connection, "mission-energy-read-a", "read_energy", layout.smelter_a.args())
-    b = await _action(connection, "mission-energy-read-b", "read_energy", layout.smelter_b.args())
+    a = await _action(connection, "mission-energy-read-a", "read_energy", {**layout.smelter_a.args(), "side": "south"})
+    b = await _action(connection, "mission-energy-read-b", "read_energy", {**layout.smelter_b.args(), "side": "north"})
     ea = int(a.get("energy") or 0)
     eb = int(b.get("energy") or 0)
 
@@ -269,8 +272,8 @@ async def _verify_power(connection, layout: FactoryLayout) -> dict[str, int]:
 
     if ea <= 0 or eb <= 0:
         await _wait(connection, "mission-power-repair-settle", 40, 8.0)
-        a = await _action(connection, "mission-energy-reread-a", "read_energy", layout.smelter_a.args())
-        b = await _action(connection, "mission-energy-reread-b", "read_energy", layout.smelter_b.args())
+        a = await _action(connection, "mission-energy-reread-a", "read_energy", {**layout.smelter_a.args(), "side": "south"})
+        b = await _action(connection, "mission-energy-reread-b", "read_energy", {**layout.smelter_b.args(), "side": "north"})
         ea = int(a.get("energy") or 0)
         eb = int(b.get("energy") or 0)
 
@@ -300,8 +303,8 @@ async def _seed_source(connection, layout: FactoryLayout) -> None:
 async def _verify_distribution(connection, layout: FactoryLayout) -> dict[str, Any]:
     await _wait(connection, "mission-distribute", 120, 12.0)
     raw_source, _ = await _item_count(connection, "mission-source-after-distribution", layout.source, "minecraft:raw_iron")
-    raw_a, inv_a = await _item_count(connection, "mission-a-after-distribution", layout.smelter_a, "minecraft:raw_iron")
-    raw_b, inv_b = await _item_count(connection, "mission-b-after-distribution", layout.smelter_b, "minecraft:raw_iron")
+    raw_a, inv_a = await _item_count(connection, "mission-a-after-distribution", layout.smelter_a, "minecraft:raw_iron", "west")
+    raw_b, inv_b = await _item_count(connection, "mission-b-after-distribution", layout.smelter_b, "minecraft:raw_iron", "west")
     transit = await _read_transit(connection, layout, "mission-transit-after-distribution")
     t = int(transit.get("total_items") or 0)
 
@@ -311,8 +314,8 @@ async def _verify_distribution(connection, layout: FactoryLayout) -> dict[str, A
 
     # The machines may already have converted some raw iron by this point, so participation
     # is inferred from either raw input still present or iron output already present.
-    ingot_a = sum(int(x.get("count") or 0) for x in (inv_a.get("items") or []) if x.get("item") == "minecraft:iron_ingot")
-    ingot_b = sum(int(x.get("count") or 0) for x in (inv_b.get("items") or []) if x.get("item") == "minecraft:iron_ingot")
+    ingot_a, _ = await _item_count(connection, "mission-a-output-after-distribution", layout.smelter_a, "minecraft:iron_ingot", "east")
+    ingot_b, _ = await _item_count(connection, "mission-b-output-after-distribution", layout.smelter_b, "minecraft:iron_ingot", "east")
     if raw_a + ingot_a == 0 or raw_b + ingot_b == 0:
         raise RuntimeError(
             f"input distribution starved a processing line: A(raw={raw_a},ingot={ingot_a}) "
@@ -335,13 +338,13 @@ async def _wait_for_output(connection, layout: FactoryLayout) -> dict[str, Any]:
 
         sink_ingots, _ = await _item_count(connection, f"mission-sink-cycle-{cycle}", layout.sink, "minecraft:iron_ingot")
         raw_source, _ = await _item_count(connection, f"mission-source-cycle-{cycle}", layout.source, "minecraft:raw_iron")
-        raw_a, inv_a = await _item_count(connection, f"mission-a-cycle-{cycle}", layout.smelter_a, "minecraft:raw_iron")
-        raw_b, inv_b = await _item_count(connection, f"mission-b-cycle-{cycle}", layout.smelter_b, "minecraft:raw_iron")
+        raw_a, _ = await _item_count(connection, f"mission-a-cycle-{cycle}", layout.smelter_a, "minecraft:raw_iron", "west")
+        raw_b, _ = await _item_count(connection, f"mission-b-cycle-{cycle}", layout.smelter_b, "minecraft:raw_iron", "west")
         transit = await _read_transit(connection, layout, f"mission-transit-cycle-{cycle}")
         t = int(transit.get("total_items") or 0)
 
-        ingot_a = sum(int(x.get("count") or 0) for x in (inv_a.get("items") or []) if x.get("item") == "minecraft:iron_ingot")
-        ingot_b = sum(int(x.get("count") or 0) for x in (inv_b.get("items") or []) if x.get("item") == "minecraft:iron_ingot")
+        ingot_a, _ = await _item_count(connection, f"mission-a-out-cycle-{cycle}", layout.smelter_a, "minecraft:iron_ingot", "east")
+        ingot_b, _ = await _item_count(connection, f"mission-b-out-cycle-{cycle}", layout.smelter_b, "minecraft:iron_ingot", "east")
         remaining_raw = raw_source + raw_a + raw_b
         visible_ingots = sink_ingots + ingot_a + ingot_b
 
@@ -394,13 +397,15 @@ async def run_mission_session(connection) -> None:
 
         sink_ingots, _ = await _item_count(connection, "mission-final-sink", layout.sink, "minecraft:iron_ingot")
         raw_source, _ = await _item_count(connection, "mission-final-source", layout.source, "minecraft:raw_iron")
-        raw_a, inv_a = await _item_count(connection, "mission-final-a", layout.smelter_a, "minecraft:raw_iron")
-        raw_b, inv_b = await _item_count(connection, "mission-final-b", layout.smelter_b, "minecraft:raw_iron")
+        raw_a, _ = await _item_count(connection, "mission-final-a", layout.smelter_a, "minecraft:raw_iron", "west")
+        raw_b, _ = await _item_count(connection, "mission-final-b", layout.smelter_b, "minecraft:raw_iron", "west")
+        out_a, _ = await _item_count(connection, "mission-final-out-a", layout.smelter_a, "minecraft:iron_ingot", "east")
+        out_b, _ = await _item_count(connection, "mission-final-out-b", layout.smelter_b, "minecraft:iron_ingot", "east")
         transit = await _read_transit(connection, layout, "mission-final-transit")
         t = int(transit.get("total_items") or 0)
 
-        machine_a_items = int(inv_a.get("total_items") or 0)
-        machine_b_items = int(inv_b.get("total_items") or 0)
+        machine_a_items = raw_a + out_a
+        machine_b_items = raw_b + out_b
         passed = (
             sink_ingots == 12
             and raw_source == 0
