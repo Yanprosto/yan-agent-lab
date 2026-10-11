@@ -80,33 +80,75 @@ def safety(block: dict) -> dict:
 def roles(block: dict, visual: dict | None, safe: dict) -> list[str]:
     if safe['class'] != 'architecture':
         return []
+
     rt = block['runtime']
     p = rt['physical']
     props = rt.get('state_properties', {})
+    prop_names = set(props)
     tags = set(rt.get('block_tags', []))
     features = visual.get('features') if visual else None
     out = set()
 
-    if safe['mass_use_allowed']:
+    # Derive shape roles first. Bulk roles are assigned only after shape is known,
+    # so a fence/gate/slab can never masquerade as a wall/floor material.
+    is_stairs = (
+        any(tag.endswith(':stairs') or '/stairs' in tag for tag in tags)
+        or {'half', 'shape', 'facing'} <= prop_names
+    )
+    is_slab = (
+        any(tag.endswith(':slabs') or '/slabs' in tag for tag in tags)
+        or ('type' in props and {'top', 'bottom'} <= set(props['type']))
+    )
+    is_wall = any('walls' in tag for tag in tags)
+    is_fence = any('fences' in tag for tag in tags)
+    is_gate = {'open', 'in_wall', 'facing'} <= prop_names
+    is_door = any('doors' in tag for tag in tags) or {'open', 'hinge', 'half'} <= prop_names
+
+    if is_stairs:
+        out.add('stairs')
+    if is_slab:
+        out.add('slab')
+    if is_wall:
+        out.add('wall')
+    if is_fence:
+        out.add('fence')
+    if is_gate:
+        out.add('gate')
+    if is_door:
+        out.add('door')
+
+    shaped_detail = is_stairs or is_slab or is_wall or is_fence or is_gate or is_door
+
+    natural_detail = any(
+        marker in tag
+        for tag in tags
+        for marker in (':leaves', '/leaves', ':saplings', '/saplings', ':flowers', '/flowers', ':crops', '/crops')
+    )
+
+    interactive_detail = bool(
+        prop_names & {'powered', 'attached', 'triggered', 'enabled', 'lit', 'signal_fire'}
+    )
+
+    if safe['mass_use_allowed'] and not shaped_detail and not natural_detail:
         out.update(('structural', 'floor'))
+
     if p.get('light_emission', 0) > 0:
         out.add('light')
+
     if features and features.get('opacity', 1.0) < 0.92 and not p.get('collision_empty'):
         out.add('glass')
-    if not safe['mass_use_allowed']:
+
+    # Decor is for passive architectural detail. Interactive/redstone/natural blocks
+    # get their own future passes instead of contaminating industrial trim selection.
+    if (
+        not safe['mass_use_allowed']
+        and not shaped_detail
+        and not natural_detail
+        and not interactive_detail
+        and p.get('light_emission', 0) <= 0
+    ):
         out.add('decor')
 
-    # Shape/state evidence: this is stronger than substring role guessing.
-    if any(tag.endswith(':stairs') or '/stairs' in tag for tag in tags) or 'half' in props and 'shape' in props:
-        out.add('stairs')
-    if any(tag.endswith(':slabs') or '/slabs' in tag for tag in tags) or ('type' in props and set(props['type']) >= {'top','bottom'}):
-        out.add('slab')
-    if any('walls' in tag for tag in tags):
-        out.add('wall')
-    if any('fences' in tag for tag in tags):
-        out.add('fence')
-    if any('doors' in tag for tag in tags) or {'open','hinge'} <= set(props):
-        out.add('door')
     return sorted(out)
 
 
@@ -156,7 +198,7 @@ def build_palette(semantic: dict, visual: dict, per_role: int) -> dict:
             anchor_samples.append(features)
 
     anchor = merge_features(anchor_samples)
-    role_names = ('structural','floor','decor','light','glass','stairs','slab','wall','fence','door')
+    role_names = ('structural','floor','decor','light','glass','stairs','slab','wall','fence','gate','door')
     slots = {}
     for role in role_names:
         scored = []
@@ -196,7 +238,7 @@ def build_palette(semantic: dict, visual: dict, per_role: int) -> dict:
     class_counts = Counter(r['safety']['class'] for r in rows)
     arch_source_counts = Counter(r['source'] for r in rows if r['safety']['architecture_allowed'])
     return {
-        'schema_version': 1,
+        'schema_version': 2,
         'kind': 'yan_fact_grounded_palette',
         'policy': {
             'source_of_truth': 'semantic runtime facts + visual catalog',
@@ -205,6 +247,7 @@ def build_palette(semantic: dict, visual: dict, per_role: int) -> dict:
             'ores': 'never architecture',
             'storage_blocks': 'budgeted explicit use until recipe-cost graph exists',
             'forbidden': 'never auto-place',
+            'role_assignment': 'shape-first; bulk roles exclude shaped/natural detail',
         },
         'anchor_profile': anchor,
         'budgets': {
