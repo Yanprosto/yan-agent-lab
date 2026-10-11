@@ -2072,7 +2072,7 @@ async def _run_environment_build_session(connection: ServerConnection) -> None:
         # PASS: deliberately preserve the built solution and the item distribution.
         successful_paths = [branch.as_dict() for branch in active_branches]
         skill_path = save_skill(
-            "environment_aware_two_branch_v1",
+            "environment_transit_aware_repair_v1",
             description=(
                 "Verified environment-aware Mekanism routing over user-provided endpoints and obstacles. "
                 "Successful network is preserved in-world instead of rolled back."
@@ -2091,17 +2091,18 @@ async def _run_environment_build_session(connection: ServerConnection) -> None:
                 "world_preserved": True,
                 "plan_history": plan_history,
             },
-            source_experiment="yan-environment-builder-v1.0",
+            source_experiment="yan-transit-aware-v1.2",
         )
         await connection.send(protocol.chat(
             f"[yan-agent] ACCEPT: existing scene solved. Network preserved in world. "
-            f"repairCount={repair_count} skill={skill_path.name}"
+            f"repairCount={repair_count} transitAware=true skill={skill_path.name}"
         ))
         await connection.send(protocol.finish(
             "transit-aware environment builder v1.2 PASS: "
             f"source={result['source']} sink1={result['left']} sink2={result['right']} "
             f"repairs={repair_count} obstacles={scene['obstacle_count']} "
-            "worldPreserved=true skill=environment_aware_two_branch_v1"
+            f"transit={result['transit']} conserved={result['conserved']} "
+            "worldPreserved=true skill=environment_transit_aware_repair_v1"
         ))
 
     except (RuntimeError, KeyError, TypeError, ValueError) as exc:
