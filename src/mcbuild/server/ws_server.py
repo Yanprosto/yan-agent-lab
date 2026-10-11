@@ -15,6 +15,7 @@ from mcbuild.config import Config
 from mcbuild.server import protocol
 from mcbuild.server.project_session import run_project_session
 from mcbuild.server.session import run_build_session
+from mcbuild.server.skill_store import list_skills, save_skill
 
 # Only one task runs at a time in this version; a second connection while a task is in
 # flight is rejected outright rather than queued.
@@ -33,8 +34,8 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
 
     command = request.get("cmd")
     prompt = request.get("prompt", "")
-    if command not in {"build", "project", "probe", "functional", "experiment", "mekanism"}:
-        await connection.send(protocol.error('Expected {"cmd": "build|project|probe|functional|experiment|mekanism", ...}.'))
+    if command not in {"build", "project", "probe", "functional", "experiment", "mekanism", "splitter"}:
+        await connection.send(protocol.error('Expected {"cmd": "build|project|probe|functional|experiment|mekanism|splitter", ...}.'))
         return
     if command in {"build", "project"} and (not isinstance(prompt, str) or not prompt.strip()):
         await connection.send(protocol.error('Expected non-empty "prompt" for build/project.'))
@@ -56,8 +57,10 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
             await _run_functional_session(connection)
         elif command == "experiment":
             await _run_experiment_session(connection)
-        else:
+        elif command == "mekanism":
             await _run_mekanism_experiment_session(connection)
+        else:
+            await _run_splitter_experiment_session(connection)
     finally:
         _task_in_progress = False
 
@@ -680,6 +683,276 @@ async def _run_mekanism_experiment_session(connection: ServerConnection) -> None
     await connection.send(protocol.finish(
         "Mekanism experiment v0.5 PASS: real mod config loop completed; "
         f"tried={len(history)}; accepted={accepted['name']}; history={history}; worldClean=true"
+    ))
+
+
+async def _build_splitter_variant_a(connection: ServerConnection, name: str) -> dict[str, Any]:
+    """One PULL extractor feeding a shared T-network and two equal sinks."""
+    source = {"x": 6, "y": 3, "z": 0}
+    root = {"x": 6, "y": 2, "z": 0}
+    junction = {"x": 6, "y": 1, "z": 0}
+    left_arm = {"x": 5, "y": 1, "z": 0}
+    right_arm = {"x": 7, "y": 1, "z": 0}
+    left_sink = {"x": 4, "y": 1, "z": 0}
+    right_sink = {"x": 8, "y": 1, "z": 0}
+
+    await connection.send(protocol.chat(
+        "[yan-agent] variant-A: BUILD single extractor -> shared T-network -> two sinks"
+    ))
+    placements = [
+        ("source", source, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
+        ("root", root, "mekanism:basic_logistical_transporter"),
+        ("junction", junction, "mekanism:basic_logistical_transporter"),
+        ("left-arm", left_arm, "mekanism:basic_logistical_transporter"),
+        ("right-arm", right_arm, "mekanism:basic_logistical_transporter"),
+        ("left-sink", left_sink, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
+        ("right-sink", right_sink, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
+    ]
+    for label, pos, block_id in placements:
+        await _action(connection, f"{name}-place-{label}", "place_block", {**pos, "block": block_id})
+
+    await _action(connection, f"{name}-settle", "wait_ticks", {"ticks": 15}, timeout=5.0)
+    await _action(
+        connection,
+        f"{name}-pull",
+        "mek_set_transporter_mode",
+        {**root, "side": "up", "mode": "PULL"},
+    )
+    seeded = await _action(
+        connection,
+        f"{name}-seed",
+        "seed_item",
+        {**source, "item": "minecraft:raw_iron", "count": 6},
+    )
+    await connection.send(protocol.chat(
+        f"[yan-agent] variant-A: seeded={seeded.get('inserted')}/6; watching real Mekanism routing..."
+    ))
+    await _action(connection, f"{name}-wait", "wait_ticks", {"ticks": 240}, timeout=20.0)
+
+    return {
+        "source": await _action(connection, f"{name}-source", "read_inventory", source),
+        "left": await _action(connection, f"{name}-left", "read_inventory", left_sink),
+        "right": await _action(connection, f"{name}-right", "read_inventory", right_sink),
+        "drain_positions": [("source", source), ("left", left_sink), ("right", right_sink)],
+        "topology": "single_pull_shared_t",
+    }
+
+
+async def _build_splitter_variant_b(connection: ServerConnection, name: str) -> dict[str, Any]:
+    """Two independent PULL extractors compete fairly for one source inventory."""
+    source = {"x": 6, "y": 3, "z": 0}
+    left_pull = {"x": 5, "y": 3, "z": 0}
+    left_arm = {"x": 4, "y": 3, "z": 0}
+    left_sink = {"x": 3, "y": 3, "z": 0}
+    right_pull = {"x": 7, "y": 3, "z": 0}
+    right_arm = {"x": 8, "y": 3, "z": 0}
+    right_sink = {"x": 9, "y": 3, "z": 0}
+
+    await connection.send(protocol.chat(
+        "[yan-agent] variant-B: MUTATE topology -> two independent PULL extractors from one source"
+    ))
+    placements = [
+        ("source", source, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
+        ("left-pull", left_pull, "mekanism:basic_logistical_transporter"),
+        ("left-arm", left_arm, "mekanism:basic_logistical_transporter"),
+        ("left-sink", left_sink, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
+        ("right-pull", right_pull, "mekanism:basic_logistical_transporter"),
+        ("right-arm", right_arm, "mekanism:basic_logistical_transporter"),
+        ("right-sink", right_sink, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
+    ]
+    for label, pos, block_id in placements:
+        await _action(connection, f"{name}-place-{label}", "place_block", {**pos, "block": block_id})
+
+    await _action(connection, f"{name}-settle", "wait_ticks", {"ticks": 15}, timeout=5.0)
+
+    left_cfg = await _action(
+        connection,
+        f"{name}-left-pull-mode",
+        "mek_set_transporter_mode",
+        {**left_pull, "side": "east", "mode": "PULL"},
+    )
+    right_cfg = await _action(
+        connection,
+        f"{name}-right-pull-mode",
+        "mek_set_transporter_mode",
+        {**right_pull, "side": "west", "mode": "PULL"},
+    )
+    await connection.send(protocol.chat(
+        f"[yan-agent] variant-B: CONFIG left={left_cfg.get('after')} right={right_cfg.get('after')}"
+    ))
+
+    seeded = await _action(
+        connection,
+        f"{name}-seed",
+        "seed_item",
+        {**source, "item": "minecraft:raw_iron", "count": 6},
+    )
+    await connection.send(protocol.chat(
+        f"[yan-agent] variant-B: seeded={seeded.get('inserted')}/6; observing both independent branches..."
+    ))
+    await _action(connection, f"{name}-wait", "wait_ticks", {"ticks": 240}, timeout=20.0)
+
+    return {
+        "source": await _action(connection, f"{name}-source", "read_inventory", source),
+        "left": await _action(connection, f"{name}-left", "read_inventory", left_sink),
+        "right": await _action(connection, f"{name}-right", "read_inventory", right_sink),
+        "drain_positions": [("source", source), ("left", left_sink), ("right", right_sink)],
+        "topology": "dual_independent_pull",
+    }
+
+
+async def _cleanup_splitter_variant(
+    connection: ServerConnection,
+    *,
+    name: str,
+    drain_positions: list[tuple[str, dict[str, int]]],
+) -> None:
+    for label, pos in drain_positions:
+        try:
+            drained = await _action(connection, f"{name}-drain-{label}", "drain_inventory", pos)
+            await connection.send(protocol.chat(
+                f"[yan-agent] {name}: RESET {label} removed={drained.get('removed_total')}"
+            ))
+        except RuntimeError as exc:
+            await connection.send(protocol.chat(f"[yan-agent] {name}: RESET {label} skipped: {exc}"))
+    rolled = await _action(connection, f"{name}-rollback", "rollback_session", {})
+    await connection.send(protocol.chat(
+        f"[yan-agent] {name}: ROLLBACK removed={rolled.get('removed')} trackedAfter={rolled.get('tracked_after')}"
+    ))
+
+
+async def _run_splitter_experiment_session(connection: ServerConnection) -> None:
+    """v0.6: topology search + persistent skill admission."""
+    await connection.send(protocol.hello("yan-splitter-v0.6"))
+
+    # v0.5 was live-validated before this branch. Commit that verified primitive to
+    # durable project memory so future tasks do not rediscover it.
+    base_skill_path = save_skill(
+        "mekanism_single_extractor_v1",
+        description="A logistical transporter actively extracts from an adjacent source only when the source-facing side is PULL.",
+        implementation={
+            "block": "mekanism:basic_logistical_transporter",
+            "source_side_mode": "PULL",
+            "sink_side_mode": "NORMAL",
+        },
+        verification={"seeded": 6, "source_after": 0, "sink_after": 6, "conserved": True},
+        source_experiment="yan-mekanism-v0.5-live-validated",
+    )
+    await connection.send(protocol.chat(
+        f"[yan-agent] MEMORY: loaded/admitted base skill mekanism_single_extractor_v1 -> {base_skill_path.name}"
+    ))
+    await connection.send(protocol.chat(
+        "[yan-agent] v0.6 objective: distribute 6 raw iron so BOTH branches receive items; "
+        "agent may reject a topology and rebuild a structurally different one."
+    ))
+
+    # Union of both candidate footprints. Abort before touching the world if any cell is occupied.
+    footprint = [
+        {"x": 3, "y": 3, "z": 0}, {"x": 4, "y": 3, "z": 0}, {"x": 5, "y": 3, "z": 0},
+        {"x": 6, "y": 3, "z": 0}, {"x": 7, "y": 3, "z": 0}, {"x": 8, "y": 3, "z": 0},
+        {"x": 9, "y": 3, "z": 0}, {"x": 6, "y": 2, "z": 0}, {"x": 4, "y": 1, "z": 0},
+        {"x": 5, "y": 1, "z": 0}, {"x": 6, "y": 1, "z": 0}, {"x": 7, "y": 1, "z": 0},
+        {"x": 8, "y": 1, "z": 0},
+    ]
+
+    history: list[dict[str, Any]] = []
+    accepted: dict[str, Any] | None = None
+    accepted_topology: str | None = None
+
+    try:
+        initial = await _action(connection, "split-footprint", "inspect_blocks", {"positions": footprint})
+        occupied = [b for b in (initial.get("blocks") or []) if not b.get("is_air", False)]
+        if occupied:
+            raise RuntimeError(f"splitter footprint is not empty: {occupied}")
+
+        builders = [
+            ("variant-A", _build_splitter_variant_a),
+            ("variant-B", _build_splitter_variant_b),
+        ]
+        for index, (name, builder) in enumerate(builders, start=1):
+            await connection.send(protocol.chat(f"[yan-agent] TRY {index}/{len(builders)} {name}"))
+            observed = await builder(connection, name)
+
+            source_n = int(observed["source"].get("total_items") or 0)
+            left_n = int(observed["left"].get("total_items") or 0)
+            right_n = int(observed["right"].get("total_items") or 0)
+            total = source_n + left_n + right_n
+            conserved = total == 6
+            both_live = left_n > 0 and right_n > 0
+            imbalance = abs(left_n - right_n)
+            passed = conserved and source_n == 0 and both_live
+            score = (100 if both_live else 0) - imbalance
+
+            row = {
+                "name": name,
+                "topology": observed["topology"],
+                "source": source_n,
+                "left": left_n,
+                "right": right_n,
+                "total": total,
+                "conserved": conserved,
+                "both_live": both_live,
+                "imbalance": imbalance,
+                "score": score,
+                "passed": passed,
+            }
+            history.append(row)
+            await connection.send(protocol.chat(
+                f"[yan-agent] OBSERVE {name}: source={source_n} left={left_n} right={right_n} "
+                f"conserved={conserved} bothLive={both_live} imbalance={imbalance} score={score}"
+            ))
+
+            if passed:
+                accepted = row
+                accepted_topology = observed["topology"]
+                await connection.send(protocol.chat(
+                    f"[yan-agent] ACCEPT {name}: both branches are physically live."
+                ))
+                await _cleanup_splitter_variant(
+                    connection, name=name, drain_positions=observed["drain_positions"]
+                )
+                break
+
+            await connection.send(protocol.chat(
+                f"[yan-agent] REJECT {name}: branch starvation detected; rollback and mutate topology."
+            ))
+            await _cleanup_splitter_variant(
+                connection, name=name, drain_positions=observed["drain_positions"]
+            )
+
+        if accepted is None or accepted_topology is None:
+            raise RuntimeError(f"no topology activated both branches; history={history}")
+
+        skill_path = save_skill(
+            "mekanism_two_branch_distribution_v1",
+            description="Verified topology that moves one source inventory into two live Mekanism logistical branches.",
+            implementation={
+                "topology": accepted_topology,
+                "source_item": "minecraft:raw_iron",
+                "source_side_modes": "PULL",
+                "success_contract": {"left_min": 1, "right_min": 1, "source_final": 0},
+            },
+            verification=accepted,
+            source_experiment="yan-splitter-v0.6",
+        )
+        skills = list_skills()
+        await connection.send(protocol.chat(
+            f"[yan-agent] MEMORY: saved verified skill {skill_path.name}; knownSkills={skills}"
+        ))
+
+    except (RuntimeError, KeyError, TypeError, ValueError) as exc:
+        try:
+            await _action(connection, "split-emergency-rollback", "rollback_session", {})
+        except RuntimeError:
+            pass
+        await connection.send(protocol.error(f"splitter experiment v0.6 FAIL: {exc}"))
+        return
+
+    await connection.send(protocol.finish(
+        "splitter experiment v0.6 PASS: topology search completed; "
+        f"tried={len(history)} accepted={accepted['name']} topology={accepted_topology}; "
+        f"left={accepted['left']} right={accepted['right']} imbalance={accepted['imbalance']}; "
+        f"skill=mekanism_two_branch_distribution_v1; worldClean=true"
     ))
 
 
