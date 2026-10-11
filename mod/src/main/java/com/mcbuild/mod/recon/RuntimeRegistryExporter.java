@@ -49,7 +49,7 @@ public final class RuntimeRegistryExporter {
         String fileStamp = FILE_TS.format(Instant.now());
 
         JsonObject root = new JsonObject();
-        root.addProperty("schema_version", 1);
+        root.addProperty("schema_version", 2);
         root.addProperty("kind", "yan_runtime_registry");
         root.addProperty("generated_at", generatedAt);
         root.addProperty("minecraft_version", server.getServerVersion());
@@ -77,6 +77,8 @@ public final class RuntimeRegistryExporter {
             row.addProperty("namespace", id.getNamespace());
             row.addProperty("path", id.getPath());
             row.addProperty("default_state", state.toString());
+            row.addProperty("block_class", block.getClass().getName());
+            row.add("block_class_hierarchy", classHierarchy(block.getClass()));
 
             JsonArray blockTags = tagsForBlock(block);
             row.add("block_tags", blockTags);
@@ -180,6 +182,16 @@ public final class RuntimeRegistryExporter {
                     mods.add(row);
                 });
         return mods;
+    }
+
+    private static JsonArray classHierarchy(Class<?> type) {
+        JsonArray classes = new JsonArray();
+        Class<?> current = type;
+        while (current != null && current != Object.class) {
+            classes.add(current.getName());
+            current = current.getSuperclass();
+        }
+        return classes;
     }
 
     private static JsonArray tagsForBlock(Block block) {
