@@ -4,6 +4,7 @@
 
 - [Project concept and long-term goal](docs/YAN_PROJECT_CONCEPT.md)
 - [Completed Mekanism audit: results, evidence and original archives](docs/recon/MEKANISM_AUDIT.md)
+- [Reusable external tools and integration priorities](docs/REUSE_CATALOG.md)
 - [Structured model defaults](docs/recon/mekanism/oracle_defaults.json)
 - [Agent context-recovery rules](AGENTS.md)
 

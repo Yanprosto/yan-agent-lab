@@ -905,6 +905,11 @@ Large structures should be built as scheduled work, not one catastrophic frame.
 
 ## 28. External projects and reusable ideas
 
+The maintained inventory, source links, integration status and reuse decisions are in
+[`REUSE_CATALOG.md`](REUSE_CATALOG.md). Consult it before writing a new subsystem.
+Existing tools must be considered explicitly; deferred does not mean discarded.
+
+
 Useful concepts already identified:
 
 mcbuild:
