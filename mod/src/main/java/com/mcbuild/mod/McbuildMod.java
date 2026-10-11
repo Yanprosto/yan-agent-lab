@@ -2,6 +2,7 @@ package com.mcbuild.mod;
 
 import com.mcbuild.mod.command.BuildCommand;
 import com.mcbuild.mod.command.ProjectCommand;
+import com.mcbuild.mod.command.YanExperimentCommand;
 import com.mcbuild.mod.command.YanFunctionalCommand;
 import com.mcbuild.mod.command.YanProbeCommand;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -23,6 +24,7 @@ public class McbuildMod {
             ProjectCommand.register(event.getDispatcher());
             YanProbeCommand.register(event.getDispatcher());
             YanFunctionalCommand.register(event.getDispatcher());
+            YanExperimentCommand.register(event.getDispatcher());
         }
 
         @SubscribeEvent

@@ -6,15 +6,19 @@ import com.google.gson.JsonObject;
 import com.mcbuild.mod.net.ProtocolMessages;
 import com.mcbuild.mod.net.WsClient;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Blocks;
@@ -49,6 +53,10 @@ public final class BuildSessionManager {
 
     public static synchronized boolean startFunctional(BlockPos anchor, ServerLevel level, ServerPlayer player) {
         return start("functional", "", anchor, level, player);
+    }
+
+    public static synchronized boolean startExperiment(BlockPos anchor, ServerLevel level, ServerPlayer player) {
+        return start("experiment", "", anchor, level, player);
     }
 
     private static synchronized boolean start(
@@ -100,7 +108,7 @@ public final class BuildSessionManager {
             this.player = player;
             this.chatPrefix = switch (command) {
                 case "project" -> "[mcbuild-project]";
-                case "probe", "functional" -> "[yan-agent]";
+                case "probe", "functional", "experiment" -> "[yan-agent]";
                 default -> "[mcbuild]";
             };
         }
@@ -144,8 +152,11 @@ public final class BuildSessionManager {
                         case "inspect_blocks" -> inspectBlocks(request);
                         case "read_inventory" -> readInventory(request);
                         case "read_energy" -> readEnergy(request);
+                        case "seed_item" -> seedItem(request);
+                        case "drain_inventory" -> drainInventory(request);
                         case "place_block" -> placeBlock(request);
                         case "remove_block" -> removeBlock(request);
+                        case "rollback_session" -> rollbackSession();
                         default -> throw new IllegalArgumentException("Unsupported action: " + request.action);
                     };
                     sendObservation(request.id, true, result, null);
@@ -231,6 +242,125 @@ public final class BuildSessionManager {
             }
             result.addProperty("total_items", total);
             result.add("items", items);
+            return result;
+        }
+
+        private JsonObject seedItem(ProtocolMessages.Action request) {
+            BlockPos pos = resolveRelativePos(request.args);
+            Direction side = parseOptionalSide(request.args);
+            if (request.args == null || !request.args.has("item")) {
+                throw new IllegalArgumentException("seed_item requires args.item");
+            }
+            int count = request.args.has("count") ? request.args.get("count").getAsInt() : 1;
+            count = Math.max(1, Math.min(4096, count));
+
+            ResourceLocation itemId = ResourceLocation.tryParse(request.args.get("item").getAsString());
+            if (itemId == null) {
+                throw new IllegalArgumentException("Invalid item id: " + request.args.get("item").getAsString());
+            }
+            Item item = BuiltInRegistries.ITEM.getOptional(itemId)
+                    .orElseThrow(() -> new IllegalArgumentException("Unknown item: " + itemId));
+
+            IItemHandler handler = level.getCapability(Capabilities.ItemHandler.BLOCK, pos, side);
+            if (handler == null) {
+                throw new IllegalStateException("No item handler at " + pos.toShortString());
+            }
+
+            int remainingCount = count;
+            int inserted = 0;
+            while (remainingCount > 0) {
+                int batch = Math.min(remainingCount, new ItemStack(item).getMaxStackSize());
+                ItemStack remainder = new ItemStack(item, batch);
+                for (int slot = 0; slot < handler.getSlots() && !remainder.isEmpty(); slot++) {
+                    remainder = handler.insertItem(slot, remainder, false);
+                }
+                int accepted = batch - remainder.getCount();
+                inserted += accepted;
+                remainingCount -= accepted;
+                if (accepted == 0) {
+                    break;
+                }
+            }
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("item", itemId.toString());
+            result.addProperty("requested", count);
+            result.addProperty("inserted", inserted);
+            result.addProperty("remaining", count - inserted);
+            if (inserted != count) {
+                throw new IllegalStateException("seed_item inserted only " + inserted + "/" + count);
+            }
+            return result;
+        }
+
+        private JsonObject drainInventory(ProtocolMessages.Action request) {
+            BlockPos pos = resolveRelativePos(request.args);
+            Direction side = parseOptionalSide(request.args);
+            ResourceLocation filter = null;
+            if (request.args != null && request.args.has("item") && !request.args.get("item").isJsonNull()) {
+                filter = ResourceLocation.tryParse(request.args.get("item").getAsString());
+                if (filter == null) {
+                    throw new IllegalArgumentException("Invalid item id filter");
+                }
+            }
+
+            IItemHandler handler = level.getCapability(Capabilities.ItemHandler.BLOCK, pos, side);
+            if (handler == null) {
+                throw new IllegalStateException("No item handler at " + pos.toShortString());
+            }
+
+            int removed = 0;
+            JsonArray removedItems = new JsonArray();
+            for (int slot = 0; slot < handler.getSlots(); slot++) {
+                while (true) {
+                    ItemStack stack = handler.getStackInSlot(slot);
+                    if (stack.isEmpty()) {
+                        break;
+                    }
+                    ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+                    if (filter != null && !filter.equals(id)) {
+                        break;
+                    }
+                    ItemStack extracted = handler.extractItem(slot, Math.min(stack.getCount(), stack.getMaxStackSize()), false);
+                    if (extracted.isEmpty()) {
+                        break;
+                    }
+                    removed += extracted.getCount();
+                    JsonObject row = new JsonObject();
+                    row.addProperty("slot", slot);
+                    row.addProperty("item", BuiltInRegistries.ITEM.getKey(extracted.getItem()).toString());
+                    row.addProperty("count", extracted.getCount());
+                    removedItems.add(row);
+                }
+            }
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("removed_total", removed);
+            result.add("removed_items", removedItems);
+            return result;
+        }
+
+        private JsonObject rollbackSession() {
+            List<BlockPos> positions = new ArrayList<>(agentPlaced);
+            int removed = 0;
+            int alreadyAir = 0;
+            for (BlockPos pos : positions) {
+                if (level.getBlockState(pos).isAir()) {
+                    alreadyAir++;
+                    agentPlaced.remove(pos);
+                    continue;
+                }
+                if (level.setBlock(pos, Blocks.AIR.defaultBlockState(), 3)) {
+                    removed++;
+                    agentPlaced.remove(pos);
+                }
+            }
+
+            JsonObject result = new JsonObject();
+            result.addProperty("tracked_before", positions.size());
+            result.addProperty("removed", removed);
+            result.addProperty("already_air", alreadyAir);
+            result.addProperty("tracked_after", agentPlaced.size());
             return result;
         }
 
