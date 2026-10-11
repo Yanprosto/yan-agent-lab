@@ -1,0 +1,227 @@
+{
+  "schema_version": 1,
+  "title": "shaft",
+  "project_summary": "Authored environment study; no planner/worker LLM run.",
+  "site": {
+    "min_x": 0,
+    "max_x": 95,
+    "min_z": 0,
+    "max_z": 95,
+    "base_y": 0
+  },
+  "style_bible": {
+    "architectural_style": "abandoned industrial freight node",
+    "scale_and_massing": "96x96 plot, three elevated decks, dominant central void",
+    "primary_palette": [
+      "light_gray_concrete",
+      "deepslate_tiles",
+      "polished_andesite"
+    ],
+    "secondary_palette": [
+      "cut_copper"
+    ],
+    "accent_palette": [
+      "yellow_concrete",
+      "sea_lantern"
+    ],
+    "roof_language": "open gantries",
+    "opening_language": "deep service bays",
+    "detail_language": "freight tracks and warning stripes",
+    "landscape_language": "loading apron",
+    "global_constraints": [
+      "Keep central void open",
+      "Connect three main decks"
+    ]
+  },
+  "interfaces": [],
+  "work_packages": [
+    {
+      "instances": [
+        {
+          "id": "main",
+          "anchor": [
+            0,
+            0,
+            0
+          ],
+          "rotation": 0
+        }
+      ],
+      "requested_views": [
+        {
+          "yaw": 0
+        },
+        {
+          "mode": "top-down"
+        }
+      ],
+      "id": "layer_0",
+      "name": "Elevation 0\u201313",
+      "semantic_type": "authored_elevation_partition",
+      "objective": "Preserve authored geometry",
+      "depends_on": [],
+      "neighbor_context": [],
+      "worker_brief": "No worker execution: partition of compiled authored DSL.",
+      "acceptance_criteria": [
+        "All voxels within bounds"
+      ],
+      "responsibility": {
+        "boundary_kind": "hard",
+        "core": {
+          "op": "shape",
+          "shape": {
+            "kind": "axis_aligned_rectangle",
+            "min_x": 0,
+            "max_x": 95,
+            "min_z": 0,
+            "max_z": 95
+          }
+        },
+        "min_y": 0,
+        "max_y": 13,
+        "write_policy": "preserve_existing"
+      }
+    },
+    {
+      "instances": [
+        {
+          "id": "main",
+          "anchor": [
+            0,
+            14,
+            0
+          ],
+          "rotation": 0
+        }
+      ],
+      "requested_views": [
+        {
+          "yaw": 0
+        },
+        {
+          "mode": "top-down"
+        }
+      ],
+      "id": "layer_1",
+      "name": "Elevation 14\u201329",
+      "semantic_type": "authored_elevation_partition",
+      "objective": "Preserve authored geometry",
+      "depends_on": [],
+      "neighbor_context": [],
+      "worker_brief": "No worker execution: partition of compiled authored DSL.",
+      "acceptance_criteria": [
+        "All voxels within bounds"
+      ],
+      "responsibility": {
+        "boundary_kind": "hard",
+        "core": {
+          "op": "shape",
+          "shape": {
+            "kind": "axis_aligned_rectangle",
+            "min_x": 0,
+            "max_x": 95,
+            "min_z": 0,
+            "max_z": 95
+          }
+        },
+        "min_y": 14,
+        "max_y": 29,
+        "write_policy": "preserve_existing"
+      }
+    },
+    {
+      "instances": [
+        {
+          "id": "main",
+          "anchor": [
+            0,
+            30,
+            0
+          ],
+          "rotation": 0
+        }
+      ],
+      "requested_views": [
+        {
+          "yaw": 0
+        },
+        {
+          "mode": "top-down"
+        }
+      ],
+      "id": "layer_2",
+      "name": "Elevation 30\u201345",
+      "semantic_type": "authored_elevation_partition",
+      "objective": "Preserve authored geometry",
+      "depends_on": [],
+      "neighbor_context": [],
+      "worker_brief": "No worker execution: partition of compiled authored DSL.",
+      "acceptance_criteria": [
+        "All voxels within bounds"
+      ],
+      "responsibility": {
+        "boundary_kind": "hard",
+        "core": {
+          "op": "shape",
+          "shape": {
+            "kind": "axis_aligned_rectangle",
+            "min_x": 0,
+            "max_x": 95,
+            "min_z": 0,
+            "max_z": 95
+          }
+        },
+        "min_y": 30,
+        "max_y": 45,
+        "write_policy": "preserve_existing"
+      }
+    },
+    {
+      "instances": [
+        {
+          "id": "main",
+          "anchor": [
+            0,
+            46,
+            0
+          ],
+          "rotation": 0
+        }
+      ],
+      "requested_views": [
+        {
+          "yaw": 0
+        },
+        {
+          "mode": "top-down"
+        }
+      ],
+      "id": "layer_3",
+      "name": "Elevation 46\u201363",
+      "semantic_type": "authored_elevation_partition",
+      "objective": "Preserve authored geometry",
+      "depends_on": [],
+      "neighbor_context": [],
+      "worker_brief": "No worker execution: partition of compiled authored DSL.",
+      "acceptance_criteria": [
+        "All voxels within bounds"
+      ],
+      "responsibility": {
+        "boundary_kind": "hard",
+        "core": {
+          "op": "shape",
+          "shape": {
+            "kind": "axis_aligned_rectangle",
+            "min_x": 0,
+            "max_x": 95,
+            "min_z": 0,
+            "max_z": 95
+          }
+        },
+        "min_y": 46,
+        "max_y": 63,
+        "write_policy": "preserve_existing"
+      }
+    }
+  ]
+}
