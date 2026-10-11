@@ -752,7 +752,7 @@ public final class BuildSessionManager {
             }
         }
 
-        private JsonObject seedEnergy(ProtocolMessages.Action request) {
+        private JsonObject seedEnergy(ProtocolMessages.Action request) throws Exception {
             BlockPos pos = resolveRelativePos(request.args);
             Direction side = parseOptionalSide(request.args);
             if (!agentPlaced.contains(pos)) {
@@ -764,8 +764,8 @@ public final class BuildSessionManager {
                 throw new IllegalArgumentException("seed_energy requires args.amount");
             }
 
-            long requestedLong = request.args.get("amount").getAsLong();
-            if (requestedLong <= 0) {
+            long requested = request.args.get("amount").getAsLong();
+            if (requested <= 0) {
                 throw new IllegalArgumentException("seed_energy amount must be > 0");
             }
 
@@ -774,29 +774,72 @@ public final class BuildSessionManager {
                 throw new IllegalStateException("No energy storage at " + pos.toShortString());
             }
 
-            long remaining = requestedLong;
-            long inserted = 0;
+            long before = storage.getEnergyStored();
+            long remaining = requested;
+            long reportedAccepted = 0;
             while (remaining > 0) {
                 int batch = (int) Math.min(Integer.MAX_VALUE, remaining);
                 int accepted = storage.receiveEnergy(batch, false);
                 if (accepted <= 0) {
                     break;
                 }
-                inserted += accepted;
+                reportedAccepted += accepted;
                 remaining -= accepted;
             }
 
+            long afterCapability = storage.getEnergyStored();
+            boolean usedMekanismDirectSet = false;
+
+            // Creative Mekanism containers can report simulated acceptance without mutating
+            // stored energy. If the real value did not move, use Mekanism's own container
+            // API and verify the post-state instead of trusting the capability return value.
+            if (afterCapability <= before) {
+                BlockEntity be = level.getBlockEntity(pos);
+                if (be != null && be.getClass().getName().startsWith("mekanism.")) {
+                    try {
+                        Object container = be.getClass().getMethod("getEnergyContainer").invoke(be);
+                        if (container != null) {
+                            java.lang.reflect.Method setEnergy = null;
+                            for (java.lang.reflect.Method method : container.getClass().getMethods()) {
+                                if ("setEnergy".equals(method.getName())
+                                        && method.getParameterCount() == 2
+                                        && method.getParameterTypes()[0] == long.class) {
+                                    setEnergy = method;
+                                    break;
+                                }
+                            }
+                            if (setEnergy != null) {
+                                long target = Math.max(before, requested);
+                                setEnergy.invoke(container, target, null);
+                                usedMekanismDirectSet = true;
+                                be.setChanged();
+                                invokeOptional(be, "sendUpdatePacket", new Class<?>[0], new Object[0]);
+                            }
+                        }
+                    } catch (NoSuchMethodException ignored) {
+                        // Non-Mekanism-generic energy holder: capability path above is authoritative.
+                    }
+                }
+            }
+
+            IEnergyStorage verify = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, side);
+            long after = verify == null ? 0 : verify.getEnergyStored();
+
             JsonObject result = baseLocationResult(pos);
             result.addProperty("side", side == null ? "unsided" : side.getName());
-            result.addProperty("requested", requestedLong);
-            result.addProperty("inserted", inserted);
-            result.addProperty("remaining", requestedLong - inserted);
-            result.addProperty("energy_after", storage.getEnergyStored());
-            result.addProperty("capacity", storage.getMaxEnergyStored());
-            result.addProperty("can_receive", storage.canReceive());
-            if (inserted <= 0) {
+            result.addProperty("requested", requested);
+            result.addProperty("energy_before", before);
+            result.addProperty("reported_accepted", reportedAccepted);
+            result.addProperty("energy_after_capability", afterCapability);
+            result.addProperty("energy_after", after);
+            result.addProperty("used_mekanism_direct_set", usedMekanismDirectSet);
+            result.addProperty("verified_increase", after > before);
+
+            if (after <= before) {
                 throw new IllegalStateException(
-                        "seed_energy inserted 0/" + requestedLong + " into " + pos.toShortString());
+                        "seed_energy failed to increase stored energy at " + pos.toShortString()
+                                + " before=" + before + " after=" + after
+                                + " reportedAccepted=" + reportedAccepted);
             }
             return result;
         }
