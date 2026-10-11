@@ -6,6 +6,7 @@ import com.mcbuild.mod.command.YanExperimentCommand;
 import com.mcbuild.mod.command.YanFunctionalCommand;
 import com.mcbuild.mod.command.YanMekanismExperimentCommand;
 import com.mcbuild.mod.command.YanProbeCommand;
+import com.mcbuild.mod.command.YanRegistryDumpCommand;
 import com.mcbuild.mod.command.YanSplitterExperimentCommand;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -29,6 +30,7 @@ public class McbuildMod {
             YanExperimentCommand.register(event.getDispatcher());
             YanMekanismExperimentCommand.register(event.getDispatcher());
             YanSplitterExperimentCommand.register(event.getDispatcher());
+            YanRegistryDumpCommand.register(event.getDispatcher());
         }
 
         @SubscribeEvent
