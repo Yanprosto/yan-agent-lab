@@ -49,36 +49,17 @@ async def _find_pair(connection) -> tuple[FactoryLayout, FactoryLayout]:
 
 
 async def _provision_power(connection, layout: FactoryLayout, cell: str) -> dict[str, Any]:
-    before = await _action(
-        connection,
-        f"{cell}-cube-energy-before",
-        "read_energy",
-        layout.cube.args(),
-    )
-    before_n = int(before.get("energy") or 0)
-
-    seeded = None
-    if before_n <= 0:
-        seeded = await _action(
-            connection,
-            f"{cell}-seed-energy",
-            "seed_energy",
-            {**layout.cube.args(), "amount": 64_000},
-        )
-        await connection.send(protocol.chat(
-            f"[yan-agent] POWER {cell}: source was empty; seeded={seeded.get('inserted')} "
-            f"energyAfter={seeded.get('energy_after')}"
-        ))
-
     source = await _action(
         connection,
-        f"{cell}-cube-energy-after",
+        f"{cell}-cube-energy",
         "read_energy",
         layout.cube.args(),
     )
     source_n = int(source.get("energy") or 0)
     if source_n <= 0:
-        raise RuntimeError(f"{cell}: power source still empty after provisioning")
+        raise RuntimeError(
+            f"{cell}: precharged Creative Energy Cube is unexpectedly empty"
+        )
 
     cable_a = await _action(
         connection,
@@ -94,15 +75,13 @@ async def _provision_power(connection, layout: FactoryLayout, cell: str) -> dict
     )
 
     await connection.send(protocol.chat(
-        f"[yan-agent] POWER SOURCE {cell}: cube={source_n} "
+        f"[yan-agent] POWER SOURCE {cell}: prechargedCube={source_n} "
         f"cableA={cable_a.get('energy')} cableB={cable_b.get('energy')}"
     ))
 
     consumers = await _verify_power(connection, layout)
     return {
-        "source_before": before_n,
-        "source_after": source_n,
-        "seeded": 0 if seeded is None else int(seeded.get("inserted") or 0),
+        "source": source_n,
         "cable_a": int(cable_a.get("energy") or 0),
         "cable_b": int(cable_b.get("energy") or 0),
         "smelter_a": consumers["a"],
