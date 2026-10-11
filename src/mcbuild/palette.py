@@ -305,6 +305,102 @@ _N_BASE = len(_NAMES)
 _dynamic_index: dict[str, int] = {}
 _index_block: dict[int, Block] = {}
 
+# Runtime/project-local modded blocks registered from the fact-grounded palette.
+# Keys are full canonical ids, e.g. "mekanismadditions:black_slick_plastic".
+_external_blocks: dict[str, tuple[tuple[int, int, int], bool]] = {}
+
+
+def _allocate_dynamic(block: Block) -> Block:
+    index = _N_BASE + len(_index_block)
+    stored = Block(
+        index=index,
+        name=block.name,
+        mc_id=block.mc_id,
+        rgb=block.rgb,
+        transparent=block.transparent,
+        renderable=block.renderable,
+        state=block.state,
+    )
+    _index_block[index] = stored
+    return stored
+
+
+def register_external_block(
+    mc_id: str,
+    rgb: tuple[int, int, int],
+    *,
+    transparent: bool = False,
+) -> Block:
+    """Register a runtime-verified non-vanilla block for voxel use.
+
+    The caller is responsible for sourcing ids from a real runtime registry dump.
+    This function never invents or fuzzy-matches modded ids.
+    """
+    base, state = _parse_full_id(mc_id)
+    if not base or ":" not in base or base.startswith("minecraft:"):
+        raise PaletteError(f"External block id must be a non-vanilla namespaced id: {mc_id!r}")
+    canonical = _full_mc_id(base, state)
+    existing = _dynamic_index.get(canonical)
+    if existing is not None:
+        return _index_block[existing]
+
+    _external_blocks[base] = (tuple(int(x) for x in rgb), bool(transparent))
+    block = _allocate_dynamic(
+        Block(
+            index=-1,
+            name=base,
+            mc_id=canonical,
+            rgb=tuple(int(x) for x in rgb),
+            transparent=bool(transparent),
+            renderable=True,
+            state=state,
+        )
+    )
+    _dynamic_index[canonical] = block.index
+    return block
+
+
+def clear_external_blocks() -> None:
+    """Clear only externally registered modded ids.
+
+    Existing vanilla/stateful dynamic indices remain valid for the process lifetime.
+    """
+    external_indices = {
+        idx
+        for key, idx in _dynamic_index.items()
+        if ":" in key and not key.startswith("minecraft:")
+    }
+    for key in list(_dynamic_index):
+        if ":" in key and not key.startswith("minecraft:"):
+            _dynamic_index.pop(key, None)
+    for idx in external_indices:
+        _index_block.pop(idx, None)
+    _external_blocks.clear()
+
+
+def _parse_full_id(name: str) -> tuple[str, tuple[tuple[str, str], ...]]:
+    """Parse a fully-qualified block id while preserving its namespace."""
+    state: tuple[tuple[str, str], ...] = ()
+    base = name.strip()
+    if base.endswith("]") and "[" in base:
+        base, rest = base.split("[", 1)
+        pairs = []
+        for part in rest[:-1].split(","):
+            part = part.strip()
+            if not part:
+                continue
+            k, _, v = part.partition("=")
+            pairs.append((k.strip(), v.strip()))
+        state = tuple(sorted(pairs))
+    return base.strip(), state
+
+
+def _full_mc_id(base: str, state: tuple[tuple[str, str], ...]) -> str:
+    if not state:
+        return base
+    props = ",".join(f"{k}={v}" for k, v in state)
+    return f"{base}[{props}]"
+
 
 def _parse_name(name: str) -> tuple[str, tuple[tuple[str, str], ...]]:
     """Split "minecraft:oak_stairs[facing=north,half=top]" -> ("oak_stairs", sorted pairs)."""
@@ -343,12 +439,45 @@ def _base_block(index: int) -> Block:
     return _build_block(index, _NAMES[index], ())
 
 
+def _get_external_block(name: str) -> Block | None:
+    base, state = _parse_full_id(name)
+    if ":" not in base or base.startswith("minecraft:"):
+        return None
+    resolved = _external_blocks.get(base)
+    canonical = _full_mc_id(base, state)
+    existing = _dynamic_index.get(canonical)
+    if existing is not None:
+        return _index_block[existing]
+    if resolved is None:
+        raise PaletteError(
+            f"Unknown external block {base!r}. Register it from a runtime-verified palette first."
+        )
+    rgb, transparent = resolved
+    block = _allocate_dynamic(
+        Block(
+            index=-1,
+            name=base,
+            mc_id=canonical,
+            rgb=rgb,
+            transparent=transparent,
+            renderable=True,
+            state=state,
+        )
+    )
+    _dynamic_index[canonical] = block.index
+    return block
+
+
 def get_block(name: str) -> Block:
     """Look up a block by name, with optional block state, e.g. "oak_stairs[facing=north]".
 
     Accepts a "minecraft:" prefix. The base name is validated against the registry; block
     states are preserved for rendering and export but not individually validated.
     """
+    external = _get_external_block(name)
+    if external is not None:
+        return external
+
     base, state = _parse_name(name)
     aliased = ALIAS.get(base)
     if aliased is not None:
@@ -371,9 +500,9 @@ def get_block(name: str) -> Block:
     key = _mc_id(base, state)
     dyn = _dynamic_index.get(key)
     if dyn is None:
-        dyn = _N_BASE + len(_dynamic_index)
+        block = _allocate_dynamic(_build_block(-1, base, state))
+        dyn = block.index
         _dynamic_index[key] = dyn
-        _index_block[dyn] = _build_block(dyn, base, state)
     return _index_block[dyn]
 
 
