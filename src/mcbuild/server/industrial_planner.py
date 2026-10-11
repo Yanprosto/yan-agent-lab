@@ -77,7 +77,7 @@ def generate_iron_works_candidates() -> list[IronWorksCandidate]:
             direct_smelting=False,
             raw_input=36,
             final_output=48,
-            estimated_blocks=97,
+            estimated_blocks=98,
             energy_islands=4,
             verified_primitives_only=True,
             throughput_score=92,
