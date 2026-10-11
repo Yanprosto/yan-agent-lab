@@ -61,18 +61,34 @@ async def run_iron_works_session(goal, connection):
                 activate_input=cell.upstream is None,
             )
             power[cell.id] = await _verify_power(connection, cell.layout, cell.id)
-        for cell in plan.cells:
-            if cell.upstream:
-                await _configure_transporter_pull(connection, f"{cell.id}-handoff-a", cell.layout.in_a[0], "south")
-                await _configure_transporter_pull(connection, f"{cell.id}-handoff-b", cell.layout.in_b[0], "north")
-            else:
-                await _seed_material(
-                    connection, cell.layout.source, cell.stage.input_item, cell.stage.input_count, f"{cell.id}-seed"
+        pending = {cell.id: cell for cell in plan.cells}
+        completed = set()
+        while pending:
+            wave = [cell for cell in pending.values() if cell.upstream is None or cell.upstream in completed]
+            if not wave:
+                raise ValueError("cyclic or unresolved process dependency")
+            # Start every independent cell before waiting for any production.
+            # Bridge requests remain serial: a single WebSocket has one observation stream.
+            for cell in wave:
+                if cell.upstream:
+                    await _configure_transporter_pull(connection, f"{cell.id}-handoff-a", cell.layout.in_a[0], "south")
+                    await _configure_transporter_pull(connection, f"{cell.id}-handoff-b", cell.layout.in_b[0], "north")
+                else:
+                    await _seed_material(
+                        connection, cell.layout.source, cell.stage.input_item, cell.stage.input_count, f"{cell.id}-seed"
+                    )
+            await connection.send(protocol.chat(f"[yan-agent] PRODUCTION WAVE: {[c.id for c in wave]}"))
+            for cell in wave:
+                production[cell.id] = await _wait_stage_output(
+                    connection,
+                    cell.layout,
+                    cell.stage,
+                    prefix=cell.id,
+                    max_cycles=30,
+                    check_before_wait=True,
                 )
-            # Only feed downstream after exact upstream verification. Other lanes remain independent.
-            production[cell.id] = await _wait_stage_output(
-                connection, cell.layout, cell.stage, prefix=cell.id, max_cycles=30
-            )
+                completed.add(cell.id)
+                del pending[cell.id]
         final, transit, remaining = 0, 0, 0
         for cell in plan.cells:
             if cell.stage.output_item == "minecraft:iron_ingot":

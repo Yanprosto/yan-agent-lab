@@ -221,10 +221,12 @@ async def _wait_stage_output(
     *,
     prefix: str,
     max_cycles: int,
+    check_before_wait: bool = False,
 ) -> dict[str, Any]:
     history: list[dict[str, Any]] = []
     for cycle in range(1, max_cycles + 1):
-        await _wait(connection, f"{prefix}-process-{cycle}", 200, 16.0)
+        if cycle > 1 or not check_before_wait:
+            await _wait(connection, f"{prefix}-process-{cycle}", 200, 16.0)
 
         output_count, _ = await _item_count(
             connection,

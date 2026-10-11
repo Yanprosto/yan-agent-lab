@@ -53,3 +53,19 @@ power spine, arbitrary port routing, continuous-load commissioning, runtime repl
 or local repair is added here. Execution failure rolls back session-owned edits; it does
 not automatically rebuild another candidate after mutation. This milestone establishes
 a genuine plan-to-execution contract for those future changes.
+
+## Production scheduling correction
+
+The live direct-smelting run on 2026-10-11 took 399.6 seconds. About 399.2 seconds
+were explicit tick waits: the executor seeded and completed each independent lane
+serially. Construction/power checks finished in roughly nine seconds.
+
+Independent cells now start in dependency waves before any output wait. Completed
+upstream contracts still gate downstream intake. Each production check reads current
+state before waiting, so already-complete lanes incur no extra 200-tick delay. The
+WebSocket observation stream remains serial. Twelve offline tests pass, including
+ordering assertions for three roots and all downstream gates.
+
+Expected direct-three-lane commissioning is about one lane's processing time plus
+setup (~2 minutes 20 seconds for the same batch at 20 TPS), rather than three lane
+times. This estimate needs a new live run; machines are not artificially accelerated.
