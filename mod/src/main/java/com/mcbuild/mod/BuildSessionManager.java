@@ -172,6 +172,8 @@ public final class BuildSessionManager {
                         case "rollback_session" -> rollbackSession();
                         case "mek_get_transporter_mode" -> mekGetTransporterMode(request);
                         case "mek_set_transporter_mode" -> mekSetTransporterMode(request);
+                        case "mek_read_transit" -> mekReadTransit(request);
+                        case "mek_clear_transit" -> mekClearTransit(request);
                         default -> throw new IllegalArgumentException("Unsupported action: " + request.action);
                     };
                     sendObservation(request.id, true, result, null);
@@ -377,6 +379,198 @@ public final class BuildSessionManager {
             result.addProperty("already_air", alreadyAir);
             result.addProperty("tracked_after", agentPlaced.size());
             return result;
+        }
+
+        private JsonObject mekReadTransit(ProtocolMessages.Action request) throws Exception {
+            JsonArray positions = request.args == null ? null : request.args.getAsJsonArray("positions");
+            if (positions == null) {
+                throw new IllegalArgumentException("mek_read_transit requires args.positions");
+            }
+
+            JsonArray transporters = new JsonArray();
+            JsonArray items = new JsonArray();
+            int totalItems = 0;
+            int stackCount = 0;
+            Set<BlockPos> seen = new HashSet<>();
+
+            for (JsonElement element : positions) {
+                JsonObject rel = element.getAsJsonObject();
+                BlockPos relative = new BlockPos(
+                        rel.get("x").getAsInt(),
+                        rel.get("y").getAsInt(),
+                        rel.get("z").getAsInt());
+                BlockPos pos = anchor.offset(relative);
+                if (!seen.add(pos)) {
+                    continue;
+                }
+
+                Object transmitter = getMekanismTransporter(pos);
+                Object transitObject = transmitter.getClass().getMethod("getTransit").invoke(transmitter);
+                if (!(transitObject instanceof java.util.Collection<?> transit)) {
+                    throw new IllegalStateException("Mekanism getTransit did not return a Collection");
+                }
+
+                JsonObject transporterRow = baseLocationResult(pos);
+                transporterRow.addProperty("stack_count", transit.size());
+                int transporterItems = 0;
+                JsonArray transporterStacks = new JsonArray();
+
+                for (Object stack : transit) {
+                    java.lang.reflect.Field itemStackField = stack.getClass().getField("itemStack");
+                    ItemStack itemStack = (ItemStack) itemStackField.get(stack);
+                    if (itemStack == null || itemStack.isEmpty()) {
+                        continue;
+                    }
+                    int count = itemStack.getCount();
+                    transporterItems += count;
+                    totalItems += count;
+                    stackCount++;
+
+                    JsonObject row = new JsonObject();
+                    row.addProperty("item", BuiltInRegistries.ITEM.getKey(itemStack.getItem()).toString());
+                    row.addProperty("count", count);
+
+                    try {
+                        java.lang.reflect.Field progressField = stack.getClass().getField("progress");
+                        row.addProperty("progress", progressField.getInt(stack));
+                    } catch (NoSuchFieldException ignored) {
+                    }
+
+                    try {
+                        Object pathType = stack.getClass().getMethod("getPathType").invoke(stack);
+                        row.addProperty("path_type", String.valueOf(pathType));
+                    } catch (ReflectiveOperationException ignored) {
+                    }
+
+                    transporterStacks.add(row);
+                    JsonObject flat = row.deepCopy();
+                    flat.addProperty("x", relative.getX());
+                    flat.addProperty("y", relative.getY());
+                    flat.addProperty("z", relative.getZ());
+                    items.add(flat);
+                }
+
+                transporterRow.addProperty("total_items", transporterItems);
+                transporterRow.add("stacks", transporterStacks);
+                transporters.add(transporterRow);
+            }
+
+            JsonObject result = new JsonObject();
+            result.addProperty("available", true);
+            result.addProperty("transporter_count", transporters.size());
+            result.addProperty("stack_count", stackCount);
+            result.addProperty("total_items", totalItems);
+            result.add("transporters", transporters);
+            result.add("items", items);
+            return result;
+        }
+
+        private JsonObject mekClearTransit(ProtocolMessages.Action request) throws Exception {
+            JsonArray positions = request.args == null ? null : request.args.getAsJsonArray("positions");
+            if (positions == null) {
+                throw new IllegalArgumentException("mek_clear_transit requires args.positions");
+            }
+
+            Class<?> managerClass = Class.forName("mekanism.common.content.transporter.TransporterManager");
+            java.lang.reflect.Method managerRemove = null;
+            for (java.lang.reflect.Method method : managerClass.getMethods()) {
+                if ("remove".equals(method.getName()) && method.getParameterCount() == 2) {
+                    managerRemove = method;
+                    break;
+                }
+            }
+            if (managerRemove == null) {
+                throw new IllegalStateException("Could not resolve Mekanism TransporterManager.remove(Level, stack)");
+            }
+
+            int clearedStacks = 0;
+            int clearedItems = 0;
+            JsonArray cleared = new JsonArray();
+            Set<BlockPos> seen = new HashSet<>();
+
+            for (JsonElement element : positions) {
+                JsonObject rel = element.getAsJsonObject();
+                BlockPos relative = new BlockPos(
+                        rel.get("x").getAsInt(),
+                        rel.get("y").getAsInt(),
+                        rel.get("z").getAsInt());
+                BlockPos pos = anchor.offset(relative);
+                if (!seen.add(pos)) {
+                    continue;
+                }
+                if (!agentPlaced.contains(pos)) {
+                    throw new IllegalStateException(
+                            "Refusing to clear transit from transporter not placed by this agent session at "
+                                    + pos.toShortString());
+                }
+
+                Object transmitter = getMekanismTransporter(pos);
+                java.lang.reflect.Field transitField = findField(transmitter.getClass(), "transit");
+                transitField.setAccessible(true);
+                Object mapObject = transitField.get(transmitter);
+                if (!(mapObject instanceof java.util.Map<?, ?> transitMap)) {
+                    throw new IllegalStateException("Mekanism transit field is not a Map");
+                }
+
+                List<Object> ids = new ArrayList<>();
+                List<Object> stacks = new ArrayList<>();
+                for (java.util.Map.Entry<?, ?> entry : transitMap.entrySet()) {
+                    ids.add(entry.getKey());
+                    stacks.add(entry.getValue());
+                }
+
+                for (int i = 0; i < stacks.size(); i++) {
+                    Object stack = stacks.get(i);
+                    Object rawId = ids.get(i);
+                    if (!(rawId instanceof Number number)) {
+                        throw new IllegalStateException("Unexpected Mekanism transit stack id type: " + rawId);
+                    }
+
+                    ItemStack itemStack = (ItemStack) stack.getClass().getField("itemStack").get(stack);
+                    int count = itemStack == null || itemStack.isEmpty() ? 0 : itemStack.getCount();
+
+                    managerRemove.invoke(null, level, stack);
+                    transmitter.getClass().getMethod("deleteStack", int.class)
+                            .invoke(transmitter, number.intValue());
+
+                    clearedStacks++;
+                    clearedItems += count;
+
+                    JsonObject row = new JsonObject();
+                    row.addProperty("x", relative.getX());
+                    row.addProperty("y", relative.getY());
+                    row.addProperty("z", relative.getZ());
+                    row.addProperty("count", count);
+                    if (itemStack != null && !itemStack.isEmpty()) {
+                        row.addProperty("item", BuiltInRegistries.ITEM.getKey(itemStack.getItem()).toString());
+                    }
+                    cleared.add(row);
+                }
+
+                BlockEntity be = level.getBlockEntity(pos);
+                if (be != null) {
+                    be.setChanged();
+                    invokeOptional(be, "sendUpdatePacket", new Class<?>[0], new Object[0]);
+                }
+            }
+
+            JsonObject result = new JsonObject();
+            result.addProperty("cleared_stacks", clearedStacks);
+            result.addProperty("cleared_items", clearedItems);
+            result.add("cleared", cleared);
+            return result;
+        }
+
+        private java.lang.reflect.Field findField(Class<?> type, String name) throws NoSuchFieldException {
+            Class<?> current = type;
+            while (current != null) {
+                try {
+                    return current.getDeclaredField(name);
+                } catch (NoSuchFieldException ignored) {
+                    current = current.getSuperclass();
+                }
+            }
+            throw new NoSuchFieldException(name);
         }
 
         private JsonObject mekGetTransporterMode(ProtocolMessages.Action request) throws Exception {
