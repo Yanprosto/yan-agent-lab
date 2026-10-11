@@ -33,8 +33,8 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
 
     command = request.get("cmd")
     prompt = request.get("prompt", "")
-    if command not in {"build", "project", "probe", "functional", "experiment"}:
-        await connection.send(protocol.error('Expected {"cmd": "build|project|probe|functional|experiment", ...}.'))
+    if command not in {"build", "project", "probe", "functional", "experiment", "mekanism"}:
+        await connection.send(protocol.error('Expected {"cmd": "build|project|probe|functional|experiment|mekanism", ...}.'))
         return
     if command in {"build", "project"} and (not isinstance(prompt, str) or not prompt.strip()):
         await connection.send(protocol.error('Expected non-empty "prompt" for build/project.'))
@@ -54,8 +54,10 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
             await _run_probe_session(connection)
         elif command == "functional":
             await _run_functional_session(connection)
-        else:
+        elif command == "experiment":
             await _run_experiment_session(connection)
+        else:
+            await _run_mekanism_experiment_session(connection)
     finally:
         _task_in_progress = False
 
@@ -457,6 +459,227 @@ async def _run_experiment_session(connection: ServerConnection) -> None:
         "experiment v0.4 PASS: autonomous loop completed; "
         f"tried={len(history)}; accepted={accepted['name']}; "
         f"history={history}; worldClean=true"
+    ))
+
+
+async def _build_mekanism_variant(
+    connection: ServerConnection,
+    *,
+    name: str,
+    input_mode: str,
+) -> dict[str, Any]:
+    """Build and test one source -> transporter -> sink configuration."""
+    source = {"x": 4, "y": 2, "z": 0}
+    transporter = {"x": 4, "y": 1, "z": 0}
+    sink = {"x": 4, "y": 0, "z": 0}
+
+    await connection.send(protocol.chat(
+        f"[yan-agent] {name}: BUILD chest -> logistical transporter -> chest; inputMode={input_mode}"
+    ))
+
+    placements = [
+        ("source", source, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
+        ("sink", sink, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
+        ("transporter", transporter, "mekanism:basic_logistical_transporter"),
+    ]
+    for label, pos, block in placements:
+        await _action(
+            connection,
+            f"{name}-place-{label}",
+            "place_block",
+            {**pos, "block": block},
+        )
+
+    # Give Mekanism a few real ticks to create/join the transmitter network.
+    await _action(
+        connection,
+        f"{name}-settle",
+        "wait_ticks",
+        {"ticks": 10},
+        timeout=5.0,
+    )
+
+    # The source chest is above the transporter, so UP is the extraction side.
+    set_mode = await _action(
+        connection,
+        f"{name}-mode-up",
+        "mek_set_transporter_mode",
+        {**transporter, "side": "up", "mode": input_mode},
+    )
+    # The sink is below the transporter; NORMAL can send into an adjacent inventory.
+    down_mode = await _action(
+        connection,
+        f"{name}-mode-down",
+        "mek_set_transporter_mode",
+        {**transporter, "side": "down", "mode": "NORMAL"},
+    )
+    await connection.send(protocol.chat(
+        f"[yan-agent] {name}: CONFIG up={set_mode.get('after')} verified={set_mode.get('verified')} "
+        f"down={down_mode.get('after')}"
+    ))
+
+    readback = await _action(
+        connection,
+        f"{name}-readback-up",
+        "mek_get_transporter_mode",
+        {**transporter, "side": "up"},
+    )
+    if readback.get("mode") != input_mode:
+        raise RuntimeError(f"{name}: transporter readback mismatch: {readback}")
+
+    seeded = await _action(
+        connection,
+        f"{name}-seed",
+        "seed_item",
+        {**source, "item": "minecraft:raw_iron", "count": 6},
+    )
+    await connection.send(protocol.chat(
+        f"[yan-agent] {name}: SEED inserted={seeded.get('inserted')}/6 raw iron"
+    ))
+
+    waited = await _action(
+        connection,
+        f"{name}-wait",
+        "wait_ticks",
+        {"ticks": 160},
+        timeout=15.0,
+    )
+    await connection.send(protocol.chat(
+        f"[yan-agent] {name}: WAIT elapsed={waited.get('elapsed_ticks')} ticks"
+    ))
+
+    src = await _action(connection, f"{name}-read-source", "read_inventory", source)
+    dst = await _action(connection, f"{name}-read-sink", "read_inventory", sink)
+    return {
+        "source": src,
+        "sink": dst,
+        "mode": readback,
+    }
+
+
+async def _cleanup_mekanism_variant(
+    connection: ServerConnection,
+    *,
+    name: str,
+) -> None:
+    source = {"x": 4, "y": 2, "z": 0}
+    sink = {"x": 4, "y": 0, "z": 0}
+
+    for label, pos in (("source", source), ("sink", sink)):
+        try:
+            drained = await _action(
+                connection,
+                f"{name}-drain-{label}",
+                "drain_inventory",
+                pos,
+            )
+            await connection.send(protocol.chat(
+                f"[yan-agent] {name}: RESET drain {label} removed={drained.get('removed_total')}"
+            ))
+        except RuntimeError as exc:
+            await connection.send(protocol.chat(
+                f"[yan-agent] {name}: RESET drain {label} skipped: {exc}"
+            ))
+
+    rolled = await _action(connection, f"{name}-rollback", "rollback_session", {})
+    await connection.send(protocol.chat(
+        f"[yan-agent] {name}: ROLLBACK removed={rolled.get('removed')} trackedAfter={rolled.get('tracked_after')}"
+    ))
+
+
+async def _run_mekanism_experiment_session(connection: ServerConnection) -> None:
+    """v0.5: mutate real Mekanism transporter mode based on live item-flow feedback."""
+    await connection.send(protocol.hello("yan-mekanism-v0.5"))
+    await connection.send(protocol.chat(
+        "[yan-agent] Mekanism v0.5 objective: move all 6 raw iron from SOURCE to SINK. "
+        "Agent will test NORMAL, reject it if no extraction occurs, rollback, mutate input side to PULL, and retry."
+    ))
+
+    source = {"x": 4, "y": 2, "z": 0}
+    transporter = {"x": 4, "y": 1, "z": 0}
+    sink = {"x": 4, "y": 0, "z": 0}
+    footprint = [source, transporter, sink]
+
+    history: list[dict[str, Any]] = []
+    accepted: dict[str, Any] | None = None
+
+    try:
+        initial = await _action(
+            connection,
+            "mek-footprint",
+            "inspect_blocks",
+            {"positions": footprint},
+        )
+        occupied = [b for b in (initial.get("blocks") or []) if not b.get("is_air", False)]
+        if occupied:
+            raise RuntimeError(f"Mekanism experiment footprint is not empty: {occupied}")
+
+        variants = [
+            ("variant-A", "NORMAL"),
+            ("variant-B", "PULL"),
+        ]
+
+        for index, (name, mode) in enumerate(variants, start=1):
+            await connection.send(protocol.chat(
+                f"[yan-agent] TRY {index}/{len(variants)} {name}: transporter UP={mode}"
+            ))
+
+            observed = await _build_mekanism_variant(
+                connection,
+                name=name,
+                input_mode=mode,
+            )
+            source_n = int(observed["source"].get("total_items") or 0)
+            sink_n = int(observed["sink"].get("total_items") or 0)
+            total = source_n + sink_n
+            conserved = total == 6
+            passed = conserved and source_n == 0 and sink_n == 6
+            score = sink_n
+
+            row = {
+                "name": name,
+                "input_mode": mode,
+                "source": source_n,
+                "sink": sink_n,
+                "total": total,
+                "conserved": conserved,
+                "score": score,
+                "passed": passed,
+            }
+            history.append(row)
+
+            await connection.send(protocol.chat(
+                f"[yan-agent] OBSERVE {name}: source={source_n} sink={sink_n} total={total} "
+                f"conserved={conserved} score={score}"
+            ))
+
+            if passed:
+                await connection.send(protocol.chat(
+                    f"[yan-agent] ACCEPT {name}: real Mekanism item flow satisfied objective."
+                ))
+                accepted = row
+                await _cleanup_mekanism_variant(connection, name=name)
+                break
+
+            await connection.send(protocol.chat(
+                f"[yan-agent] REJECT {name}: objective failed; rollback and mutate transporter mode."
+            ))
+            await _cleanup_mekanism_variant(connection, name=name)
+
+        if accepted is None:
+            raise RuntimeError(f"no Mekanism variant satisfied objective; history={history}")
+
+    except (RuntimeError, KeyError, TypeError, ValueError) as exc:
+        try:
+            await _action(connection, "mek-emergency-rollback", "rollback_session", {})
+        except RuntimeError:
+            pass
+        await connection.send(protocol.error(f"Mekanism experiment v0.5 FAIL: {exc}"))
+        return
+
+    await connection.send(protocol.finish(
+        "Mekanism experiment v0.5 PASS: real mod config loop completed; "
+        f"tried={len(history)}; accepted={accepted['name']}; history={history}; worldClean=true"
     ))
 
 
