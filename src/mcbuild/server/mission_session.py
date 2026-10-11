@@ -190,7 +190,16 @@ async def _build_factory(connection, layout: FactoryLayout) -> None:
     await _place(connection, "mission-sink", layout.sink, "minecraft:chest[facing=north,type=single,waterlogged=false]")
     await _place(connection, "mission-smelter-a", layout.smelter_a, "mekanism:energized_smelter")
     await _place(connection, "mission-smelter-b", layout.smelter_b, "mekanism:energized_smelter")
-    await _place(connection, "mission-cube", layout.cube, "mekanism:creative_energy_cube")
+    cube = await _action(
+        connection,
+        "mission-cube",
+        "place_mekanism_filled_energy_cube",
+        layout.cube.args(),
+    )
+    await connection.send(protocol.chat(
+        f"[yan-agent] POWER SOURCE: placed precharged creative-tab cube "
+        f"energy={cube.get('internal_energy')} variant={cube.get('variant')}"
+    ))
     await _place(connection, "mission-energy-a", layout.energy_a, "mekanism:basic_universal_cable")
     await _place(connection, "mission-energy-b", layout.energy_b, "mekanism:basic_universal_cable")
 
