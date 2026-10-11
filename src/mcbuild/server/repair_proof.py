@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcbuild.server.environment_planner import BranchRoute, replan_failed_branch
+from mcbuild.server import environment_planner as _planner
+from mcbuild.server.environment_planner import BranchRoute, RoutePlan, replan_failed_branch
 from mcbuild.server import protocol
 
 
@@ -48,3 +49,42 @@ def local_alternatives(*, source, sink, occupied, healthy: BranchRoute, failed: 
         bounds=bounds,
         avoid_paths=[set(failed.path)],
     )
+
+
+def activate_repair_probe() -> None:
+    """Prepend one continuity-check plan for the v1.1 live repair test."""
+    if getattr(_planner, "_yan_v11_probe_active", False):
+        return
+
+    original = _planner.generate_route_plans
+
+    def wrapped(*, source, sinks, occupied, bounds, max_plans=6):
+        plans = original(
+            source=source,
+            sinks=sinks,
+            occupied=occupied,
+            bounds=bounds,
+            max_plans=max_plans,
+        )
+        base = next((p for p in plans if p.mode == "separated"), None)
+        if base is None:
+            return plans
+        branch = base.branches[1]
+        if len(branch.path) < 3:
+            return plans
+
+        i = len(branch.path) // 2
+        sparse = branch.path[:i] + branch.path[i + 1:]
+        probe = RoutePlan(
+            plan_id="continuity-probe",
+            mode="continuity_probe",
+            branches=(
+                base.branches[0],
+                BranchRoute(branch.sink, sparse, branch.source_side),
+            ),
+            cost=base.cost,
+        )
+        return [probe, *plans][:max_plans]
+
+    _planner.generate_route_plans = wrapped
+    _planner._yan_v11_probe_active = True
