@@ -25,9 +25,10 @@ class SectorMaterials:
 
 
 REJECT_CLASS_SUFFIXES = (
-    '.FallingBlock', '.CarpetBlock', '.CoralBlock', '.BaseCoralPlantBlock',
-    '.CoralPlantBlock', '.LeavesBlock', '.BaseRailBlock', '.WaterlilyBlock',
+    '.FallingBlock', '.CarpetBlock', '.LeavesBlock', '.BaseRailBlock', '.WaterlilyBlock',
 )
+
+REJECT_CLASS_FRAGMENTS = ('Coral', 'RailBlock', 'Waterlily')
 
 DYE_PREFIXES = (
     'light_gray_', 'light_blue_', 'dark_red_', 'aqua_', 'black_', 'blue_', 'brown_',
@@ -58,6 +59,7 @@ def _runtime_reject(block: dict) -> bool:
     hierarchy = rt.get('block_class_hierarchy', [])
     return any(
         any(cls.endswith(suffix) for suffix in REJECT_CLASS_SUFFIXES)
+        or any(fragment in cls for fragment in REJECT_CLASS_FRAGMENTS)
         for cls in hierarchy
     )
 
