@@ -177,6 +177,7 @@ public final class BuildSessionManager {
                         case "rollback_session" -> rollbackSession();
                         case "mek_get_transporter_mode" -> mekGetTransporterMode(request);
                         case "mek_set_transporter_mode" -> mekSetTransporterMode(request);
+                        case "mek_set_transmitter_mode" -> mekSetTransmitterMode(request);
                         case "mek_read_transit" -> mekReadTransit(request);
                         case "mek_clear_transit" -> mekClearTransit(request);
                         case "mek_set_side_config" -> mekSetSideConfig(request);
@@ -670,6 +671,60 @@ public final class BuildSessionManager {
         }
 
         @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private JsonObject mekSetTransmitterMode(ProtocolMessages.Action request) throws Exception {
+            BlockPos pos = resolveRelativePos(request.args);
+            Direction side = requireSide(request.args);
+            if (request.args == null || !request.args.has("mode")) {
+                throw new IllegalArgumentException("mek_set_transmitter_mode requires args.mode");
+            }
+
+            BlockEntity be = level.getBlockEntity(pos);
+            if (be == null || !be.getClass().getName().startsWith("mekanism.")) {
+                throw new IllegalStateException("No Mekanism transmitter BlockEntity at " + pos.toShortString());
+            }
+
+            Object transmitter = be.getClass().getMethod("getTransmitter").invoke(be);
+            String requested = request.args.get("mode").getAsString().toUpperCase(Locale.ROOT);
+
+            Class<?> connectionTypeClass = Class.forName("mekanism.common.lib.transmitter.ConnectionType");
+            Object mode = Enum.valueOf(
+                    (Class<? extends Enum>) connectionTypeClass.asSubclass(Enum.class),
+                    requested);
+
+            Object before = transmitter.getClass()
+                    .getMethod("getConnectionTypeRaw", Direction.class)
+                    .invoke(transmitter, side);
+
+            transmitter.getClass()
+                    .getMethod("setConnectionTypeRaw", Direction.class, connectionTypeClass)
+                    .invoke(transmitter, side, mode);
+
+            invokeRequired(transmitter, "onModeChange", new Class<?>[] {Direction.class}, new Object[] {side});
+            invokeRequired(transmitter, "refreshConnections", new Class<?>[0], new Object[0]);
+            invokeRequired(transmitter, "notifyTileChange", new Class<?>[0], new Object[0]);
+            invokeOptional(be, "sendUpdatePacket", new Class<?>[0], new Object[0]);
+
+            Object after = transmitter.getClass()
+                    .getMethod("getConnectionTypeRaw", Direction.class)
+                    .invoke(transmitter, side);
+            String afterName = ((Enum<?>) after).name();
+            if (!requested.equals(afterName)) {
+                throw new IllegalStateException(
+                        "Mekanism transmitter mode readback mismatch: requested="
+                                + requested + " actual=" + afterName);
+            }
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("side", side.getName());
+            result.addProperty("before", ((Enum<?>) before).name());
+            result.addProperty("requested", requested);
+            result.addProperty("after", afterName);
+            result.addProperty("verified", true);
+            result.addProperty("transmitter_class", transmitter.getClass().getName());
+            return result;
+        }
+
         private JsonObject mekSetTransporterMode(ProtocolMessages.Action request) throws Exception {
             BlockPos pos = resolveRelativePos(request.args);
             Direction side = requireSide(request.args);
