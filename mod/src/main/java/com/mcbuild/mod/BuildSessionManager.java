@@ -64,6 +64,10 @@ public final class BuildSessionManager {
         return start("mekanism", "", anchor, level, player);
     }
 
+    public static synchronized boolean startSplitterExperiment(BlockPos anchor, ServerLevel level, ServerPlayer player) {
+        return start("splitter", "", anchor, level, player);
+    }
+
     private static synchronized boolean start(
             String command, String prompt, BlockPos anchor, ServerLevel level, ServerPlayer player) {
         if (active != null) {
@@ -113,7 +117,7 @@ public final class BuildSessionManager {
             this.player = player;
             this.chatPrefix = switch (command) {
                 case "project" -> "[mcbuild-project]";
-                case "probe", "functional", "experiment", "mekanism" -> "[yan-agent]";
+                case "probe", "functional", "experiment", "mekanism", "splitter" -> "[yan-agent]";
                 default -> "[mcbuild]";
             };
         }
