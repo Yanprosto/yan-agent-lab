@@ -269,7 +269,7 @@ public final class BuildSessionManager {
             int remainingCount = count;
             int inserted = 0;
             while (remainingCount > 0) {
-                int batch = Math.min(remainingCount, item.getDefaultMaxStackSize());
+                int batch = Math.min(remainingCount, new ItemStack(item).getMaxStackSize());
                 ItemStack remainder = new ItemStack(item, batch);
                 for (int slot = 0; slot < handler.getSlots() && !remainder.isEmpty(); slot++) {
                     remainder = handler.insertItem(slot, remainder, false);
