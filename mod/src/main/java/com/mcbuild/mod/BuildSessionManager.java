@@ -169,6 +169,7 @@ public final class BuildSessionManager {
                         case "inspect_blocks" -> inspectBlocks(request);
                         case "read_inventory" -> readInventory(request);
                         case "read_energy" -> readEnergy(request);
+                        case "seed_energy" -> seedEnergy(request);
                         case "seed_item" -> seedItem(request);
                         case "drain_inventory" -> drainInventory(request);
                         case "place_block" -> placeBlock(request);
@@ -749,6 +750,55 @@ public final class BuildSessionManager {
             } catch (NoSuchMethodException ignored) {
                 // Optional visual/update hook. Functional network hooks above are mandatory.
             }
+        }
+
+        private JsonObject seedEnergy(ProtocolMessages.Action request) {
+            BlockPos pos = resolveRelativePos(request.args);
+            Direction side = parseOptionalSide(request.args);
+            if (!agentPlaced.contains(pos)) {
+                throw new IllegalStateException(
+                        "Refusing to seed energy into block not placed by this agent session at "
+                                + pos.toShortString());
+            }
+            if (request.args == null || !request.args.has("amount")) {
+                throw new IllegalArgumentException("seed_energy requires args.amount");
+            }
+
+            long requestedLong = request.args.get("amount").getAsLong();
+            if (requestedLong <= 0) {
+                throw new IllegalArgumentException("seed_energy amount must be > 0");
+            }
+
+            IEnergyStorage storage = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, side);
+            if (storage == null) {
+                throw new IllegalStateException("No energy storage at " + pos.toShortString());
+            }
+
+            long remaining = requestedLong;
+            long inserted = 0;
+            while (remaining > 0) {
+                int batch = (int) Math.min(Integer.MAX_VALUE, remaining);
+                int accepted = storage.receiveEnergy(batch, false);
+                if (accepted <= 0) {
+                    break;
+                }
+                inserted += accepted;
+                remaining -= accepted;
+            }
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("side", side == null ? "unsided" : side.getName());
+            result.addProperty("requested", requestedLong);
+            result.addProperty("inserted", inserted);
+            result.addProperty("remaining", requestedLong - inserted);
+            result.addProperty("energy_after", storage.getEnergyStored());
+            result.addProperty("capacity", storage.getMaxEnergyStored());
+            result.addProperty("can_receive", storage.canReceive());
+            if (inserted <= 0) {
+                throw new IllegalStateException(
+                        "seed_energy inserted 0/" + requestedLong + " into " + pos.toShortString());
+            }
+            return result;
         }
 
         private JsonObject readEnergy(ProtocolMessages.Action request) {
