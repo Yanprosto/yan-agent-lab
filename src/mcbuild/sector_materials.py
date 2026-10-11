@@ -83,7 +83,15 @@ def _candidate_rows(role: str, palette_data: dict, semantic_by_id: dict[str, dic
     return rows
 
 
-def _pick(rows: list[dict], *, darkest: bool = False, lightest: bool = False, prefer_modded: bool = False, exclude: set[str] | None = None) -> dict:
+def _pick(
+    rows: list[dict],
+    *,
+    darkest: bool = False,
+    lightest: bool = False,
+    target_luminance: float | None = None,
+    prefer_modded: bool = False,
+    exclude: set[str] | None = None,
+) -> dict:
     exclude = exclude or set()
     pool = [r for r in rows if r['id'] not in exclude]
     if not pool:
@@ -97,6 +105,8 @@ def _pick(rows: list[dict], *, darkest: bool = False, lightest: bool = False, pr
             return (lum, -mod_bonus if prefer_modded else 0.0, -score, row['id'])
         if lightest:
             return (-lum, -mod_bonus if prefer_modded else 0.0, -score, row['id'])
+        if target_luminance is not None:
+            return (abs(lum - target_luminance), -mod_bonus if prefer_modded else 0.0, -score, row['id'])
         return (-mod_bonus if prefer_modded else 0.0, -score, abs(lum - 0.45), row['id'])
 
     return sorted(pool, key=key)[0]
@@ -130,13 +140,34 @@ def resolve_sector_materials(
 
     dark = _pick(structural, darkest=True, prefer_modded=True)
     main = _pick(structural, prefer_modded=False, exclude={dark['id']})
-    wall = _pick(structural, lightest=True, prefer_modded=False, exclude={dark['id'], main['id']})
+    wall = _pick(structural, target_luminance=0.58, prefer_modded=False, exclude={dark['id'], main['id']})
     secondary = _pick(floor, prefer_modded=True, exclude={dark['id'], main['id'], wall['id']})
 
-    # Functional-looking visual accents are deliberately constrained to architecture-allowed
-    # full blocks; real machines remain planner-only and are not selected here.
-    warm_pool = [r for r in structural if 0.02 <= float(r['features']['mean_hsv'][0]) <= 0.16]
-    warm = _pick(warm_pool or structural, prefer_modded=True, exclude={dark['id'], main['id'], wall['id'], secondary['id']})
+    # Style anchor, not a safety shortcut: prefer a known runtime-registered copper
+    # architectural block when it is present and allowed by the semantic catalog.
+    # This avoids visually warm but semantically absurd candidates such as dead coral.
+    copper_id = 'minecraft:cut_copper'
+    copper_block = semantic_by_id.get(copper_id)
+    copper_visual = visual_by_id.get(copper_id)
+    if (
+        copper_block
+        and copper_visual
+        and copper_visual.get('features')
+        and not _runtime_reject(copper_block)
+        and not copper_block['runtime'].get('block_entity_provider')
+    ):
+        warm = {
+            'id': copper_id,
+            'source': copper_block['source'],
+            'features': copper_visual['features'],
+        }
+    else:
+        warm_pool = [r for r in structural if 0.02 <= float(r['features']['mean_hsv'][0]) <= 0.16]
+        warm = _pick(
+            warm_pool or structural,
+            prefer_modded=True,
+            exclude={dark['id'], main['id'], wall['id'], secondary['id']},
+        )
 
     light = _pick(lights, prefer_modded=True)
 
