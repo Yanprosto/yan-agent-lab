@@ -7,7 +7,7 @@ expand this into learned/MCTS search without changing the execution contract.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 
 
 @dataclass(frozen=True)
@@ -52,80 +52,47 @@ class IronWorksCandidate:
 def generate_iron_works_candidates() -> list[IronWorksCandidate]:
     """Generate distinct high-level architectures, not block-by-block permutations."""
 
-    return [
-        IronWorksCandidate(
-            id="compact_single_lane",
-            enrichment_cells=1,
-            smelting_cells=1,
-            direct_smelting=False,
-            raw_input=18,
-            final_output=24,
-            estimated_blocks=49,
-            energy_islands=2,
-            verified_primitives_only=True,
-            throughput_score=45,
-            efficiency_score=100,
-            robustness_score=55,
-            compactness_score=92,
-            reuse_score=80,
-            risk_penalty=0,
-        ),
-        IronWorksCandidate(
-            id="balanced_parallel_works",
-            enrichment_cells=2,
-            smelting_cells=2,
-            direct_smelting=False,
-            raw_input=36,
-            final_output=48,
-            estimated_blocks=98,
-            energy_islands=4,
-            verified_primitives_only=True,
-            throughput_score=92,
-            efficiency_score=100,
-            robustness_score=88,
-            compactness_score=62,
-            reuse_score=90,
-            risk_penalty=0,
-        ),
-        IronWorksCandidate(
-            id="direct_smelting_yard",
-            enrichment_cells=0,
-            smelting_cells=3,
-            direct_smelting=True,
-            raw_input=48,
-            final_output=48,
-            estimated_blocks=73,
-            energy_islands=3,
-            verified_primitives_only=True,
-            throughput_score=95,
-            efficiency_score=55,
-            robustness_score=82,
-            compactness_score=74,
-            reuse_score=85,
-            risk_penalty=2,
-        ),
-        IronWorksCandidate(
-            id="dense_factory_future",
-            enrichment_cells=1,
-            smelting_cells=1,
-            direct_smelting=False,
-            raw_input=36,
-            final_output=48,
-            estimated_blocks=42,
-            energy_islands=1,
-            verified_primitives_only=False,
-            throughput_score=100,
-            efficiency_score=100,
-            robustness_score=78,
-            compactness_score=100,
-            reuse_score=25,
-            risk_penalty=30,
-        ),
-    ]
+    candidates = []
+    # Expand process choice × capacity. Scores derive from design quantities.
+    for direct in (False, True):
+        for lanes in range(1, 4):
+            cells = lanes if direct else 2 * lanes
+            raw = lanes * (24 if direct else 18)
+            final = lanes * 24
+            blocks = cells * 25 - (0 if direct else lanes)
+            candidate_id = f"{'direct' if direct else 'enriched'}_{lanes}_lanes"
+            candidates.append(
+                IronWorksCandidate(
+                    id=candidate_id,
+                    enrichment_cells=0 if direct else lanes,
+                    smelting_cells=lanes,
+                    direct_smelting=direct,
+                    raw_input=raw,
+                    final_output=final,
+                    estimated_blocks=blocks,
+                    energy_islands=cells,
+                    verified_primitives_only=True,
+                    throughput_score=min(100, lanes * 33),
+                    efficiency_score=100 * final / raw / (4 / 3),
+                    robustness_score=50 + 15 * (lanes - 1),
+                    compactness_score=100 * 49 / max(49, blocks),
+                    reuse_score=100,
+                    risk_penalty=0,
+                )
+            )
+    return candidates
 
 
-def rank_iron_works_candidates(beam_width: int = 3) -> list[IronWorksCandidate]:
+def rank_iron_works_candidates(beam_width: int = 6, goal: str = "") -> list[IronWorksCandidate]:
     candidates = generate_iron_works_candidates()
+    normalized = goal.lower()
+    for candidate in candidates:
+        if candidate.id in normalized:
+            return [candidate]
+    if "компакт" in normalized or "compact" in normalized:
+        candidates = [c for c in candidates if c.smelting_cells == 1]
+    if "прямая" in normalized or "direct" in normalized:
+        candidates = [c for c in candidates if c.direct_smelting]
     ranked = sorted(candidates, key=lambda c: c.score, reverse=True)
     verified = [c for c in ranked if c.verified_primitives_only]
     return verified[: max(1, beam_width)]
