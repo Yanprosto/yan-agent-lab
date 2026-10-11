@@ -178,6 +178,7 @@ public final class BuildSessionManager {
                         case "mek_set_transporter_mode" -> mekSetTransporterMode(request);
                         case "mek_read_transit" -> mekReadTransit(request);
                         case "mek_clear_transit" -> mekClearTransit(request);
+                        case "mek_set_side_config" -> mekSetSideConfig(request);
                         default -> throw new IllegalArgumentException("Unsupported action: " + request.action);
                     };
                     sendObservation(request.id, true, result, null);
@@ -382,6 +383,81 @@ public final class BuildSessionManager {
             result.addProperty("removed", removed);
             result.addProperty("already_air", alreadyAir);
             result.addProperty("tracked_after", agentPlaced.size());
+            return result;
+        }
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private JsonObject mekSetSideConfig(ProtocolMessages.Action request) throws Exception {
+            BlockPos pos = resolveRelativePos(request.args);
+            Direction worldSide = requireSide(request.args);
+            if (request.args == null || !request.args.has("transmission") || !request.args.has("mode")) {
+                throw new IllegalArgumentException(
+                        "mek_set_side_config requires args.transmission, args.side and args.mode");
+            }
+
+            BlockEntity be = level.getBlockEntity(pos);
+            if (be == null || !be.getClass().getName().startsWith("mekanism.")) {
+                throw new IllegalStateException("No Mekanism BlockEntity at " + pos.toShortString());
+            }
+
+            Class<?> transmissionClass = Class.forName("mekanism.common.lib.transmitter.TransmissionType");
+            Class<?> dataTypeClass = Class.forName("mekanism.common.tile.component.config.DataType");
+            Class<?> relativeSideClass = Class.forName("mekanism.api.RelativeSide");
+
+            Object transmission = Enum.valueOf(
+                    (Class<? extends Enum>) transmissionClass.asSubclass(Enum.class),
+                    request.args.get("transmission").getAsString().toUpperCase(Locale.ROOT));
+            Object mode = Enum.valueOf(
+                    (Class<? extends Enum>) dataTypeClass.asSubclass(Enum.class),
+                    request.args.get("mode").getAsString().toUpperCase(Locale.ROOT));
+
+            Object facing = be.getClass().getMethod("getDirection").invoke(be);
+            Object relativeSide = relativeSideClass
+                    .getMethod("fromDirections", Direction.class, Direction.class)
+                    .invoke(null, facing, worldSide);
+
+            Object config = be.getClass().getMethod("getConfig").invoke(be);
+            Object configInfo = config.getClass()
+                    .getMethod("getConfig", transmissionClass)
+                    .invoke(config, transmission);
+            if (configInfo == null) {
+                throw new IllegalStateException("Transmission " + transmission + " is not configurable on "
+                        + be.getClass().getName());
+            }
+
+            Object before = configInfo.getClass()
+                    .getMethod("getDataType", relativeSideClass)
+                    .invoke(configInfo, relativeSide);
+
+            Object supported = configInfo.getClass()
+                    .getMethod("supports", dataTypeClass)
+                    .invoke(configInfo, mode);
+            if (supported instanceof Boolean ok && !ok) {
+                throw new IllegalStateException(
+                        "Mode " + mode + " is not supported for " + transmission + " on " + be.getClass().getName());
+            }
+
+            configInfo.getClass()
+                    .getMethod("setDataType", dataTypeClass, relativeSideClass)
+                    .invoke(configInfo, mode, relativeSide);
+
+            config.getClass()
+                    .getMethod("sideChanged", transmissionClass, relativeSideClass)
+                    .invoke(config, transmission, relativeSide);
+
+            Object after = configInfo.getClass()
+                    .getMethod("getDataType", relativeSideClass)
+                    .invoke(configInfo, relativeSide);
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("transmission", ((Enum<?>) transmission).name());
+            result.addProperty("world_side", worldSide.getName());
+            result.addProperty("relative_side", ((Enum<?>) relativeSide).name());
+            result.addProperty("before", String.valueOf(before));
+            result.addProperty("requested", ((Enum<?>) mode).name());
+            result.addProperty("after", String.valueOf(after));
+            result.addProperty("verified", String.valueOf(after).equals(((Enum<?>) mode).name()));
+            result.addProperty("tile_class", be.getClass().getName());
             return result;
         }
 
