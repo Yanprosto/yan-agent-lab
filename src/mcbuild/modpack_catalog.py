@@ -50,6 +50,39 @@ ROLE_TOKENS: dict[str, tuple[str, ...]] = {
 
 FUNCTIONAL_ROLES = {"machine", "pipe", "cable", "rail", "storage"}
 
+# Safety is intentionally conservative. Visual similarity is never permission to use
+# a block as bulk architecture.
+FORBIDDEN_TOKENS = (
+    "creative", "admin", "debug", "command", "barrier", "structure_block",
+    "spawner", "portal", "bedrock",
+)
+FUNCTIONAL_TOKENS = (
+    "furnace", "smelter", "crusher", "infuser", "factory", "machine", "generator",
+    "turbine", "boiler", "pump", "controller", "terminal", "crafting", "workbench",
+    "anvil", "chest", "barrel", "tank", "silo", "storage", "battery", "energy_cube",
+    "press", "mixer", "mill", "assembler", "deployer", "basin", "vault",
+)
+PRESTIGE_TOKENS = (
+    "netherite", "diamond", "emerald", "unobtainium", "allthemodium", "vibranium",
+    "ultimate", "elite", "atomic", "antimatter", "refined_obsidian",
+)
+CHEAP_ARCH_TOKENS = (
+    "brick", "tile", "panel", "plating", "sheet", "concrete", "stone", "deepslate",
+    "wall", "pillar", "beam", "frame", "grate", "catwalk", "scaffold", "trim",
+)
+
+SAFETY_CLASSES = ("architecture", "functional", "prestige", "forbidden")
+
+
+@dataclass
+class SafetyProfile:
+    safety_class: str
+    architecture_allowed: bool
+    mass_use_allowed: bool
+    progression_tier: str
+    economic_cost: float
+    reasons: list[str]
+
 
 @dataclass
 class TextureFeatures:
@@ -73,6 +106,7 @@ class BlockRecord:
     tags: list[str]
     roles: list[str]
     features: TextureFeatures | None
+    safety: SafetyProfile
 
     def to_dict(self) -> dict:
         out = asdict(self)
@@ -86,6 +120,9 @@ class PaletteSlot:
     roles: list[str]
     source_jar: str
     mean_rgb: tuple[int, int, int] | None
+    safety_class: str
+    economic_cost: float
+    progression_tier: str
 
 
 def _safe_json(raw: bytes) -> dict:
@@ -186,6 +223,87 @@ def _roles(block_id: str, tags: Iterable[str]) -> list[str]:
     return sorted(set(roles or ["other"]))
 
 
+def _contains_any(haystack: str, tokens: Iterable[str]) -> list[str]:
+    return sorted({token for token in tokens if token in haystack})
+
+
+def _safety_profile(block_id: str, roles: Iterable[str], tags: Iterable[str]) -> SafetyProfile:
+    """Classify whether a block may be used by bulk architectural generation.
+
+    This is a fail-closed static pass. Runtime registry/BlockEntity information can only
+    make a block *more* restricted later, never less restricted automatically.
+    """
+
+    text = (block_id + " " + " ".join(tags) + " " + " ".join(roles)).lower()
+    reasons: list[str] = []
+
+    forbidden_hits = _contains_any(text, FORBIDDEN_TOKENS)
+    if forbidden_hits:
+        return SafetyProfile(
+            safety_class="forbidden",
+            architecture_allowed=False,
+            mass_use_allowed=False,
+            progression_tier="forbidden",
+            economic_cost=1_000_000.0,
+            reasons=[f"forbidden token: {token}" for token in forbidden_hits],
+        )
+
+    functional_hits = _contains_any(text, FUNCTIONAL_TOKENS)
+    role_hits = sorted(set(roles) & FUNCTIONAL_ROLES)
+    if functional_hits or role_hits:
+        reasons.extend(f"functional token: {token}" for token in functional_hits)
+        reasons.extend(f"functional role: {role}" for role in role_hits)
+        return SafetyProfile(
+            safety_class="functional",
+            architecture_allowed=False,
+            mass_use_allowed=False,
+            progression_tier="planner_only",
+            economic_cost=250.0,
+            reasons=reasons,
+        )
+
+    prestige_hits = _contains_any(text, PRESTIGE_TOKENS)
+    if prestige_hits:
+        # Resource/alloy blocks are not forbidden: a later planner may spend a very
+        # small prestige budget on them, but ordinary detail/grammar passes cannot.
+        tier = "late_game"
+        cost = 900.0
+        if "diamond" in prestige_hits or "emerald" in prestige_hits:
+            tier, cost = "rare", 120.0
+        if "netherite" in prestige_hits:
+            tier, cost = "very_rare", 900.0
+        return SafetyProfile(
+            safety_class="prestige",
+            architecture_allowed=False,
+            mass_use_allowed=False,
+            progression_tier=tier,
+            economic_cost=cost,
+            reasons=[f"prestige token: {token}" for token in prestige_hits],
+        )
+
+    cheap_hits = _contains_any(text, CHEAP_ARCH_TOKENS)
+    # Unknown decorative blocks are allowed into candidate review but get a higher
+    # estimated cost. Explicit construction vocabulary gets the cheapest budget.
+    if cheap_hits:
+        return SafetyProfile(
+            safety_class="architecture",
+            architecture_allowed=True,
+            mass_use_allowed=True,
+            progression_tier="common",
+            economic_cost=1.0,
+            reasons=[f"architectural token: {token}" for token in cheap_hits],
+        )
+
+    return SafetyProfile(
+        safety_class="architecture",
+        architecture_allowed=True,
+        mass_use_allowed=False,
+        progression_tier="unclassified",
+        economic_cost=8.0,
+        reasons=["no dangerous signal; unclassified architecture candidate"],
+    )
+
+
 def _normalize_ref(ref: str, default_namespace: str, kind: str) -> str:
     if ":" in ref:
         namespace, path = ref.split(":", 1)
@@ -276,6 +394,7 @@ def scan_mod_jars(mods_dir: Path) -> list[BlockRecord]:
                         tags=tags,
                         roles=_roles(block_id, tags),
                         features=merged,
+                        safety=_safety_profile(block_id, _roles(block_id, tags), tags),
                     )
                 )
 
@@ -353,11 +472,20 @@ def compile_sector_palette(
             if record.namespace != "minecraft":
                 score += 6.0
 
-            # For architecture, prefer fairly opaque blocks.
-            if role in {"structural", "floor", "decor"}:
+            architecture_role = role in {"structural", "floor", "decor", "light", "glass"}
+
+            # Hard safety gate: visual compatibility never overrides permission.
+            if architecture_role and not record.safety.architecture_allowed:
+                continue
+            if role in {"structural", "floor", "decor"} and not record.safety.mass_use_allowed:
+                # Unknown blocks may still appear in catalog/review, but not in the
+                # automatically-repeatable bulk palette.
+                continue
+
+            # For architecture, prefer opaque, cheap, reusable blocks.
+            if architecture_role:
                 score += record.features.opacity * 5.0
-                if any(r in FUNCTIONAL_ROLES for r in record.roles):
-                    score -= 14.0
+                score -= min(35.0, math.log10(max(1.0, record.safety.economic_cost)) * 12.0)
 
             # Functional anchors should remain available even if visually odd.
             if record.namespace in anchor_mod_set or record.block_id in anchor_block_set:
@@ -370,6 +498,9 @@ def compile_sector_palette(
                     roles=record.roles,
                     source_jar=record.source_jar,
                     mean_rgb=record.features.mean_rgb,
+                    safety_class=record.safety.safety_class,
+                    economic_cost=record.safety.economic_cost,
+                    progression_tier=record.safety.progression_tier,
                 )
             )
 
@@ -377,7 +508,14 @@ def compile_sector_palette(
         slots[role] = candidates[:per_role]
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
+        "safety_policy": {
+            "architecture_slots": "hard-gated to architecture_allowed",
+            "bulk_slots": "hard-gated to mass_use_allowed",
+            "functional_blocks": "planner_only",
+            "prestige_blocks": "budgeted_explicit_use_only",
+            "forbidden_blocks": "never_auto_place",
+        },
         "anchor_mods": sorted(anchor_mod_set),
         "anchor_blocks": sorted(anchor_block_set),
         "anchor_profile": asdict(profile) if profile else None,
