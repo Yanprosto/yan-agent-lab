@@ -46,3 +46,40 @@ Reported `compile_validate_seconds` covers DSL compilation, plan/merge validatio
 ## Next decision
 
 Select the spatial direction, then evolve that model: proper stair blocks and railings, more convincing damage/weathering, functional room assignments and fit to an actual site. Preserve the other alternatives as references. Inspect the chosen schematic in a disposable Minecraft location and verify traversal before merging any live-placement behavior. No change to runtime behavior is included here.
+
+## Fly through all three models in creative
+
+Live-preview runner added on this branch. **No NeoForge JAR rebuild or model API key is needed.** It uses the existing `/build` command, `blocks` packets and `inspect_blocks` actions. The reviewed executable blueprints reconstruct exactly the same full-cube models; this is not a fresh design/model run and is not a generic schematic importer.
+
+Keep your current factory checkout intact. In PowerShell:
+
+```powershell
+git -C D:\YAN_AGENT_LAB fetch origin yan-sector-previews
+git -C D:\YAN_AGENT_LAB worktree add --detach D:\YAN_SECTOR_PREVIEW origin/yan-sector-previews
+```
+
+Stop the existing `mcbuild-server-dev` / `mcbuild-server` with Ctrl+C in its own console, so port 8765 is free. Then:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\YAN_SECTOR_PREVIEW\examples\sector_study\Start-Preview.ps1
+```
+
+Open your **creative test world**, preferably the Overworld. Enable cheats if necessary. Run:
+
+```text
+/gamemode creative
+/tp @s ~ 180 ~
+/build yan-sector-preview
+```
+
+The anchor is your position when `/build` is invoked. All three bases are at Y=180, their tops at most Y=240. They start 16 blocks toward +Z, at relative X=-160 (well), -32 (canyon), +96 (shaft). Each is 96 blocks wide, with 32-block gaps. Fly toward +Z; your spawn position is outside the structures. Orientation follows world X/Z, not the direction you are looking.
+
+The server checks **all 214,822 destination cells across all three models before writing any block**. An occupied destination cancels placement; move elsewhere and retry. It never clears terrain or sends air. Empty spaces inside the models and the gaps are not scanned; choose open sky so existing terrain does not intrude into the interior. It does not automatically choose a free site or change player game mode/dimension.
+
+Placement uses packets of at most 1,024 blocks. Each packet is followed by an acknowledged readback of every destination on the existing server thread. This bounds the queue and detects rejected placements without production waits. Actual placement duration depends on game/server/chunk performance; no live timing has been measured yet.
+
+On failure/disconnection the partial model is retained and a JSON report is saved under `runs/sector-preview/`; no destructive automatic rollback. Do not retry at the same occupied position. On success the game says `Three sectors ready`, after all blocks have been read back. Send the JSON report if troubleshooting is needed. This runner currently saves local reports, not automatic GitHub log uploads.
+
+To return to factory work, stop this preview server and restart the usual server from `D:\YAN_AGENT_LAB`. The preview server only accepts the exact `/build yan-sector-preview` request. No changes are made to your normal server or mod.
+
+Offline validation: six tests cover successful placement, a collision in the last site preventing all writes, missing placement detection, wrong-height rejection, incomplete observations and disjoint/bounded real artifacts. Real Minecraft placement remains unverified until the first user run.
