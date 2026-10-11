@@ -1,6 +1,6 @@
 # Unified vanilla + Mekanism semantic catalog v1
 
-Runtime source: runtime_registry_20261011_200320.json
+Runtime source: runtime_registry_20261011_201535.json
 Static source: 20261011_223639
 
 This is not a palette yet. It is the factual substrate used to build one.
