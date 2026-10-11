@@ -6,20 +6,27 @@ import com.google.gson.JsonObject;
 import com.mcbuild.mod.net.ProtocolMessages;
 import com.mcbuild.mod.net.WsClient;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import java.util.HashSet;
+import java.util.Set;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.neoforge.server.ServerLifecycleHooks;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.energy.IEnergyStorage;
+import net.neoforged.neoforge.items.IItemHandler;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 /** Tracks the single in-flight live session and owns all world-thread interaction. */
 public final class BuildSessionManager {
@@ -38,6 +45,10 @@ public final class BuildSessionManager {
 
     public static synchronized boolean startProbe(BlockPos anchor, ServerLevel level, ServerPlayer player) {
         return start("probe", "", anchor, level, player);
+    }
+
+    public static synchronized boolean startFunctional(BlockPos anchor, ServerLevel level, ServerPlayer player) {
+        return start("functional", "", anchor, level, player);
     }
 
     private static synchronized boolean start(
@@ -59,12 +70,29 @@ public final class BuildSessionManager {
         }
     }
 
+    /** Called once per real server tick from the NeoForge tick event. */
+    public static void onServerTick(MinecraftServer server) {
+        Session session;
+        synchronized (BuildSessionManager.class) {
+            session = active;
+        }
+        if (session != null) {
+            session.onServerTick(server.getTickCount());
+        }
+    }
+
     public static final class Session {
         private final BlockPos anchor;
         private final ServerLevel level;
         private final ServerPlayer player;
         private final String chatPrefix;
+        private final Set<BlockPos> agentPlaced = new HashSet<>();
         private WsClient client;
+
+        private String pendingWaitId;
+        private int pendingWaitStartedTick;
+        private int pendingWaitUntilTick;
+        private int pendingWaitRequestedTicks;
 
         private Session(String command, BlockPos anchor, ServerLevel level, ServerPlayer player) {
             this.anchor = anchor;
@@ -72,7 +100,7 @@ public final class BuildSessionManager {
             this.player = player;
             this.chatPrefix = switch (command) {
                 case "project" -> "[mcbuild-project]";
-                case "probe" -> "[yan-agent]";
+                case "probe", "functional" -> "[yan-agent]";
                 default -> "[mcbuild]";
             };
         }
@@ -105,57 +133,260 @@ public final class BuildSessionManager {
         /** Execute a server-requested tool action against the real world and send observation back. */
         public void onAction(ProtocolMessages.Action request) {
             runOnServerThread(() -> {
-                JsonObject response = new JsonObject();
-                response.addProperty("type", "observation");
-                response.addProperty("id", request.id == null ? "" : request.id);
                 try {
-                    JsonObject result = new JsonObject();
-                    if ("inspect_target".equals(request.action)) {
-                        double reach = 12.0D;
-                        if (request.args != null && request.args.has("reach")) {
-                            reach = Math.max(1.0D, Math.min(64.0D, request.args.get("reach").getAsDouble()));
-                        }
-                        Vec3 start = player.getEyePosition();
-                        Vec3 end = start.add(player.getLookAngle().scale(reach));
-                        BlockHitResult hit = level.clip(new ClipContext(
-                                start, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player));
-                        if (hit.getType() != HitResult.Type.BLOCK) {
-                            throw new IllegalStateException("No block under crosshair within " + reach + " blocks");
-                        }
-                        BlockPos pos = hit.getBlockPos();
-                        JsonObject row = describeBlock(pos, pos.subtract(anchor));
-                        row.addProperty("hit_face", hit.getDirection().getName());
-                        result.add("target", row);
-                    } else if ("inspect_blocks".equals(request.action)) {
-                        JsonArray positions = request.args == null ? null : request.args.getAsJsonArray("positions");
-                        if (positions == null) {
-                            throw new IllegalArgumentException("inspect_blocks requires args.positions");
-                        }
-                        JsonArray blocks = new JsonArray();
-                        for (JsonElement element : positions) {
-                            JsonObject rel = element.getAsJsonObject();
-                            int x = rel.get("x").getAsInt();
-                            int y = rel.get("y").getAsInt();
-                            int z = rel.get("z").getAsInt();
-                            BlockPos pos = anchor.offset(x, y, z);
-                            blocks.add(describeBlock(pos, new BlockPos(x, y, z)));
-                        }
-                        result.add("blocks", blocks);
-                    } else {
-                        throw new IllegalArgumentException("Unsupported action: " + request.action);
+                    if ("wait_ticks".equals(request.action)) {
+                        beginWait(request);
+                        return;
                     }
-                    response.addProperty("ok", true);
-                    response.add("result", result);
+
+                    JsonObject result = switch (request.action) {
+                        case "inspect_target" -> inspectTarget(request);
+                        case "inspect_blocks" -> inspectBlocks(request);
+                        case "read_inventory" -> readInventory(request);
+                        case "read_energy" -> readEnergy(request);
+                        case "place_block" -> placeBlock(request);
+                        case "remove_block" -> removeBlock(request);
+                        default -> throw new IllegalArgumentException("Unsupported action: " + request.action);
+                    };
+                    sendObservation(request.id, true, result, null);
                 } catch (Exception e) {
-                    response.addProperty("ok", false);
-                    response.addProperty("error", e.getClass().getSimpleName() + ": " + e.getMessage());
-                }
-                if (client != null && client.isOpen()) {
-                    client.sendObservation(response);
+                    sendObservation(
+                            request.id,
+                            false,
+                            null,
+                            e.getClass().getSimpleName() + ": " + String.valueOf(e.getMessage()));
                 }
             });
         }
 
+        private JsonObject inspectTarget(ProtocolMessages.Action request) {
+            double reach = 12.0D;
+            if (request.args != null && request.args.has("reach")) {
+                reach = Math.max(1.0D, Math.min(64.0D, request.args.get("reach").getAsDouble()));
+            }
+            Vec3 start = player.getEyePosition();
+            Vec3 end = start.add(player.getLookAngle().scale(reach));
+            BlockHitResult hit = level.clip(new ClipContext(
+                    start, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player));
+            if (hit.getType() != HitResult.Type.BLOCK) {
+                throw new IllegalStateException("No block under crosshair within " + reach + " blocks");
+            }
+            BlockPos pos = hit.getBlockPos();
+            JsonObject row = describeBlock(pos, pos.subtract(anchor));
+            row.addProperty("hit_face", hit.getDirection().getName());
+            JsonObject result = new JsonObject();
+            result.add("target", row);
+            return result;
+        }
+
+        private JsonObject inspectBlocks(ProtocolMessages.Action request) {
+            JsonArray positions = request.args == null ? null : request.args.getAsJsonArray("positions");
+            if (positions == null) {
+                throw new IllegalArgumentException("inspect_blocks requires args.positions");
+            }
+            JsonArray blocks = new JsonArray();
+            for (JsonElement element : positions) {
+                JsonObject rel = element.getAsJsonObject();
+                int x = rel.get("x").getAsInt();
+                int y = rel.get("y").getAsInt();
+                int z = rel.get("z").getAsInt();
+                BlockPos pos = anchor.offset(x, y, z);
+                blocks.add(describeBlock(pos, new BlockPos(x, y, z)));
+            }
+            JsonObject result = new JsonObject();
+            result.add("blocks", blocks);
+            return result;
+        }
+
+        private JsonObject readInventory(ProtocolMessages.Action request) {
+            BlockPos pos = resolveRelativePos(request.args);
+            Direction side = parseOptionalSide(request.args);
+            IItemHandler handler = level.getCapability(Capabilities.ItemHandler.BLOCK, pos, side);
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("side", side == null ? "unsided" : side.getName());
+            if (handler == null) {
+                result.addProperty("available", false);
+                result.addProperty("slots", 0);
+                result.addProperty("total_items", 0);
+                result.add("items", new JsonArray());
+                return result;
+            }
+
+            result.addProperty("available", true);
+            result.addProperty("slots", handler.getSlots());
+            int total = 0;
+            JsonArray items = new JsonArray();
+            for (int slot = 0; slot < handler.getSlots(); slot++) {
+                ItemStack stack = handler.getStackInSlot(slot);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                total += stack.getCount();
+                JsonObject row = new JsonObject();
+                row.addProperty("slot", slot);
+                row.addProperty("item", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+                row.addProperty("count", stack.getCount());
+                items.add(row);
+            }
+            result.addProperty("total_items", total);
+            result.add("items", items);
+            return result;
+        }
+
+        private JsonObject readEnergy(ProtocolMessages.Action request) {
+            BlockPos pos = resolveRelativePos(request.args);
+            Direction side = parseOptionalSide(request.args);
+            IEnergyStorage storage = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, side);
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("side", side == null ? "unsided" : side.getName());
+            if (storage == null) {
+                result.addProperty("available", false);
+                result.addProperty("energy", 0);
+                result.addProperty("capacity", 0);
+                result.addProperty("can_extract", false);
+                result.addProperty("can_receive", false);
+                return result;
+            }
+
+            result.addProperty("available", true);
+            result.addProperty("energy", storage.getEnergyStored());
+            result.addProperty("capacity", storage.getMaxEnergyStored());
+            result.addProperty("can_extract", storage.canExtract());
+            result.addProperty("can_receive", storage.canReceive());
+            return result;
+        }
+
+        private JsonObject placeBlock(ProtocolMessages.Action request) throws CommandSyntaxException {
+            BlockPos pos = resolveRelativePos(request.args);
+            if (request.args == null || !request.args.has("block")) {
+                throw new IllegalArgumentException("place_block requires args.block");
+            }
+            String blockText = request.args.get("block").getAsString();
+            BlockState before = level.getBlockState(pos);
+            if (!before.isAir()) {
+                throw new IllegalStateException(
+                        "Refusing to overwrite non-air block at " + pos.toShortString() + ": "
+                                + BuiltInRegistries.BLOCK.getKey(before.getBlock()));
+            }
+
+            BlockState state = BlockStateCodec.parse(level.registryAccess(), blockText);
+            if (state.isAir()) {
+                throw new IllegalArgumentException("place_block cannot place air; use remove_block");
+            }
+            if (!level.setBlock(pos, state, 3)) {
+                throw new IllegalStateException("level.setBlock returned false at " + pos.toShortString());
+            }
+            agentPlaced.add(pos.immutable());
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("placed", BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
+            result.addProperty("tracked_for_rollback", true);
+            return result;
+        }
+
+        private JsonObject removeBlock(ProtocolMessages.Action request) {
+            BlockPos pos = resolveRelativePos(request.args);
+            if (!agentPlaced.contains(pos)) {
+                throw new IllegalStateException(
+                        "Refusing to remove block not placed by this agent session at " + pos.toShortString());
+            }
+            BlockState before = level.getBlockState(pos);
+            if (!level.setBlock(pos, Blocks.AIR.defaultBlockState(), 3)) {
+                throw new IllegalStateException("level.setBlock returned false while removing " + pos.toShortString());
+            }
+            agentPlaced.remove(pos);
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("removed", BuiltInRegistries.BLOCK.getKey(before.getBlock()).toString());
+            result.addProperty("is_air", level.getBlockState(pos).isAir());
+            return result;
+        }
+
+        private void beginWait(ProtocolMessages.Action request) {
+            if (pendingWaitId != null) {
+                throw new IllegalStateException("A wait_ticks action is already pending");
+            }
+            int ticks = request.args != null && request.args.has("ticks")
+                    ? request.args.get("ticks").getAsInt()
+                    : 1;
+            ticks = Math.max(1, Math.min(20 * 60 * 10, ticks));
+
+            MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+            if (server == null) {
+                throw new IllegalStateException("Minecraft server is unavailable");
+            }
+            pendingWaitId = request.id == null ? "" : request.id;
+            pendingWaitStartedTick = server.getTickCount();
+            pendingWaitRequestedTicks = ticks;
+            pendingWaitUntilTick = pendingWaitStartedTick + ticks;
+        }
+
+        private void onServerTick(int currentTick) {
+            if (pendingWaitId == null || currentTick < pendingWaitUntilTick) {
+                return;
+            }
+            String requestId = pendingWaitId;
+            int started = pendingWaitStartedTick;
+            int requested = pendingWaitRequestedTicks;
+            pendingWaitId = null;
+
+            JsonObject result = new JsonObject();
+            result.addProperty("requested_ticks", requested);
+            result.addProperty("start_tick", started);
+            result.addProperty("end_tick", currentTick);
+            result.addProperty("elapsed_ticks", currentTick - started);
+            sendObservation(requestId, true, result, null);
+        }
+
+        private BlockPos resolveRelativePos(JsonObject args) {
+            if (args == null || !args.has("x") || !args.has("y") || !args.has("z")) {
+                throw new IllegalArgumentException("action requires relative args.x, args.y, args.z");
+            }
+            return anchor.offset(args.get("x").getAsInt(), args.get("y").getAsInt(), args.get("z").getAsInt());
+        }
+
+        private Direction parseOptionalSide(JsonObject args) {
+            if (args == null || !args.has("side") || args.get("side").isJsonNull()) {
+                return null;
+            }
+            String name = args.get("side").getAsString();
+            Direction side = Direction.byName(name);
+            if (side == null) {
+                throw new IllegalArgumentException("Unknown side: " + name);
+            }
+            return side;
+        }
+
+        private JsonObject baseLocationResult(BlockPos pos) {
+            JsonObject result = new JsonObject();
+            BlockPos rel = pos.subtract(anchor);
+            result.addProperty("x", rel.getX());
+            result.addProperty("y", rel.getY());
+            result.addProperty("z", rel.getZ());
+            result.addProperty("world_x", pos.getX());
+            result.addProperty("world_y", pos.getY());
+            result.addProperty("world_z", pos.getZ());
+            result.addProperty("block", BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()).toString());
+            return result;
+        }
+
+        private void sendObservation(String requestId, boolean ok, JsonObject result, String error) {
+            JsonObject response = new JsonObject();
+            response.addProperty("type", "observation");
+            response.addProperty("id", requestId == null ? "" : requestId);
+            response.addProperty("ok", ok);
+            if (result != null) {
+                response.add("result", result);
+            }
+            if (error != null) {
+                response.addProperty("error", error);
+            }
+            if (client != null && client.isOpen()) {
+                client.sendObservation(response);
+            }
+        }
 
         private JsonObject describeBlock(BlockPos pos, BlockPos rel) {
             BlockState state = level.getBlockState(pos);
