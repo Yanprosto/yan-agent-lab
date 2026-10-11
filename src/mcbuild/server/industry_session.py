@@ -75,6 +75,7 @@ async def _build_stage_cell(
     prefix: str,
     create_source: bool,
     create_sink: bool,
+    activate_input: bool = True,
 ) -> None:
     if create_source:
         await _place(
@@ -155,8 +156,13 @@ async def _build_stage_cell(
     )
     await _configure_energy_pull(connection, layout, prefix)
 
-    await _configure_transporter_pull(connection, f"{prefix}-input-pull-a", layout.in_a[0], "south")
-    await _configure_transporter_pull(connection, f"{prefix}-input-pull-b", layout.in_b[0], "north")
+    if activate_input:
+        await _configure_transporter_pull(connection, f"{prefix}-input-pull-a", layout.in_a[0], "south")
+        await _configure_transporter_pull(connection, f"{prefix}-input-pull-b", layout.in_b[0], "north")
+    else:
+        await connection.send(protocol.chat(
+            f"[yan-agent] STAGE HOLD {stage.id}: input network built but intake remains closed until upstream handoff."
+        ))
     await _configure_transporter_pull(connection, f"{prefix}-output-pull-a", layout.out_a[0], "west")
     await _configure_transporter_pull(connection, f"{prefix}-output-pull-b", layout.out_b[0], "west")
 
@@ -360,6 +366,7 @@ async def run_industry_session(goal: str, connection) -> None:
             prefix="industry-smelt",
             create_source=False,
             create_sink=True,
+            activate_input=False,
         )
 
         power1 = await _verify_power(connection, stage1, "industry-enrich")
@@ -393,8 +400,20 @@ async def run_industry_session(goal: str, connection) -> None:
             )
         await connection.send(protocol.chat(
             f"[yan-agent] HANDOFF: stage1 complete; intermediate={intermediate} {plan.stages[0].output_item}. "
-            "Stage2 consumes the same physical buffer."
+            "Opening stage2 intake on the same physical buffer."
         ))
+        await _configure_transporter_pull(
+            connection,
+            "industry-smelt-input-pull-a-handoff",
+            stage2.in_a[0],
+            "south",
+        )
+        await _configure_transporter_pull(
+            connection,
+            "industry-smelt-input-pull-b-handoff",
+            stage2.in_b[0],
+            "north",
+        )
 
         second = await _wait_stage_output(
             connection,
