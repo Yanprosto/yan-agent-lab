@@ -675,7 +675,6 @@ public final class BuildSessionManager {
         }
 
         @SuppressWarnings({"unchecked", "rawtypes"})
-        @SuppressWarnings({"unchecked", "rawtypes"})
         private JsonObject mekSetTransmitterMode(ProtocolMessages.Action request) throws Exception {
             BlockPos pos = resolveRelativePos(request.args);
             Direction side = requireSide(request.args);
