@@ -102,6 +102,8 @@ def make_descriptor(row: dict, oracle: dict) -> dict:
         "source": source,
         "runtime": {
             "default_state": row.get("default_state"),
+            "block_class": row.get("block_class"),
+            "block_class_hierarchy": row.get("block_class_hierarchy", []),
             "state_properties": state_properties,
             "block_tags": row.get("block_tags", []),
             "has_item": bool(row.get("has_item")),
@@ -122,7 +124,7 @@ def build_catalog(runtime: dict, oracle: dict, runtime_path: Path) -> dict:
     source_counts = Counter(x["source"] for x in blocks)
     fact_counts = Counter(f for x in blocks for f in x["derived_facts"])
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "yan_semantic_block_catalog",
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "runtime_source": {
