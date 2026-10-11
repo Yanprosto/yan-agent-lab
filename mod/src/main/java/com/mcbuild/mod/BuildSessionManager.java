@@ -9,6 +9,7 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -57,6 +58,10 @@ public final class BuildSessionManager {
 
     public static synchronized boolean startExperiment(BlockPos anchor, ServerLevel level, ServerPlayer player) {
         return start("experiment", "", anchor, level, player);
+    }
+
+    public static synchronized boolean startMekanismExperiment(BlockPos anchor, ServerLevel level, ServerPlayer player) {
+        return start("mekanism", "", anchor, level, player);
     }
 
     private static synchronized boolean start(
@@ -108,7 +113,7 @@ public final class BuildSessionManager {
             this.player = player;
             this.chatPrefix = switch (command) {
                 case "project" -> "[mcbuild-project]";
-                case "probe", "functional", "experiment" -> "[yan-agent]";
+                case "probe", "functional", "experiment", "mekanism" -> "[yan-agent]";
                 default -> "[mcbuild]";
             };
         }
@@ -157,6 +162,8 @@ public final class BuildSessionManager {
                         case "place_block" -> placeBlock(request);
                         case "remove_block" -> removeBlock(request);
                         case "rollback_session" -> rollbackSession();
+                        case "mek_get_transporter_mode" -> mekGetTransporterMode(request);
+                        case "mek_set_transporter_mode" -> mekSetTransporterMode(request);
                         default -> throw new IllegalArgumentException("Unsupported action: " + request.action);
                     };
                     sendObservation(request.id, true, result, null);
@@ -362,6 +369,104 @@ public final class BuildSessionManager {
             result.addProperty("already_air", alreadyAir);
             result.addProperty("tracked_after", agentPlaced.size());
             return result;
+        }
+
+        private JsonObject mekGetTransporterMode(ProtocolMessages.Action request) throws Exception {
+            BlockPos pos = resolveRelativePos(request.args);
+            Direction side = requireSide(request.args);
+            Object transmitter = getMekanismTransporter(pos);
+            Object mode = transmitter.getClass()
+                    .getMethod("getConnectionTypeRaw", Direction.class)
+                    .invoke(transmitter, side);
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("side", side.getName());
+            result.addProperty("mode", ((Enum<?>) mode).name());
+            result.addProperty("transmitter_class", transmitter.getClass().getName());
+            return result;
+        }
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private JsonObject mekSetTransporterMode(ProtocolMessages.Action request) throws Exception {
+            BlockPos pos = resolveRelativePos(request.args);
+            Direction side = requireSide(request.args);
+            if (request.args == null || !request.args.has("mode")) {
+                throw new IllegalArgumentException("mek_set_transporter_mode requires args.mode");
+            }
+            String requested = request.args.get("mode").getAsString().toUpperCase(Locale.ROOT);
+            Object transmitter = getMekanismTransporter(pos);
+
+            Class<?> connectionTypeClass = Class.forName("mekanism.common.lib.transmitter.ConnectionType");
+            Object mode = Enum.valueOf((Class<? extends Enum>) connectionTypeClass.asSubclass(Enum.class), requested);
+
+            Object before = transmitter.getClass()
+                    .getMethod("getConnectionTypeRaw", Direction.class)
+                    .invoke(transmitter, side);
+
+            transmitter.getClass()
+                    .getMethod("setConnectionTypeRaw", Direction.class, connectionTypeClass)
+                    .invoke(transmitter, side, mode);
+
+            // Mirror Mekanism's configurator path after setConnectionTypeRaw so the live
+            // network, acceptor caches and client model all see the mutation.
+            invokeRequired(transmitter, "onModeChange", new Class<?>[] {Direction.class}, new Object[] {side});
+            invokeRequired(transmitter, "refreshConnections", new Class<?>[0], new Object[0]);
+            invokeRequired(transmitter, "notifyTileChange", new Class<?>[0], new Object[0]);
+
+            BlockEntity be = level.getBlockEntity(pos);
+            if (be != null) {
+                invokeOptional(be, "sendUpdatePacket", new Class<?>[0], new Object[0]);
+            }
+
+            Object after = transmitter.getClass()
+                    .getMethod("getConnectionTypeRaw", Direction.class)
+                    .invoke(transmitter, side);
+            String afterName = ((Enum<?>) after).name();
+            if (!requested.equals(afterName)) {
+                throw new IllegalStateException("Mekanism mode readback mismatch: requested="
+                        + requested + " actual=" + afterName);
+            }
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("side", side.getName());
+            result.addProperty("before", ((Enum<?>) before).name());
+            result.addProperty("requested", requested);
+            result.addProperty("after", afterName);
+            result.addProperty("verified", true);
+            result.addProperty("transmitter_class", transmitter.getClass().getName());
+            return result;
+        }
+
+        private Object getMekanismTransporter(BlockPos pos) throws Exception {
+            BlockEntity be = level.getBlockEntity(pos);
+            if (be == null) {
+                throw new IllegalStateException("No BlockEntity at " + pos.toShortString());
+            }
+            String className = be.getClass().getName();
+            if (!className.startsWith("mekanism.") || !className.contains("LogisticalTransporter")) {
+                throw new IllegalStateException("BlockEntity is not a Mekanism logistical transporter: " + className);
+            }
+            return be.getClass().getMethod("getTransmitter").invoke(be);
+        }
+
+        private Direction requireSide(JsonObject args) {
+            Direction side = parseOptionalSide(args);
+            if (side == null) {
+                throw new IllegalArgumentException("Mekanism transporter action requires args.side");
+            }
+            return side;
+        }
+
+        private void invokeRequired(Object target, String method, Class<?>[] parameterTypes, Object[] args) throws Exception {
+            target.getClass().getMethod(method, parameterTypes).invoke(target, args);
+        }
+
+        private void invokeOptional(Object target, String method, Class<?>[] parameterTypes, Object[] args) throws Exception {
+            try {
+                target.getClass().getMethod(method, parameterTypes).invoke(target, args);
+            } catch (NoSuchMethodException ignored) {
+                // Optional visual/update hook. Functional network hooks above are mandatory.
+            }
         }
 
         private JsonObject readEnergy(ProtocolMessages.Action request) {
