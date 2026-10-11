@@ -18,6 +18,7 @@ from mcbuild.server.project_session import run_project_session
 from mcbuild.server.mission_session import run_mission_session
 from mcbuild.server.mission_v21 import run_powered_mission_session
 from mcbuild.server.industry_session import run_industry_session
+from mcbuild.server.iron_works_session import run_iron_works_session
 from mcbuild.server.run_logger import LoggedConnection, RunRecorder
 from mcbuild.server.session import run_build_session
 from mcbuild.server.skill_store import list_skills, load_skill, save_skill
@@ -77,7 +78,18 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
         elif command == "mission":
             await run_powered_mission_session(logged_connection)
         else:
-            await run_industry_session(prompt, logged_connection)
+            normalized_goal = " ".join(str(prompt).lower().strip().split())
+            iron_works_aliases = (
+                "железный завод",
+                "большой железный завод",
+                "iron works",
+                "ironworks",
+                "iron factory",
+            )
+            if any(alias in normalized_goal for alias in iron_works_aliases):
+                await run_iron_works_session(prompt, logged_connection)
+            else:
+                await run_industry_session(prompt, logged_connection)
     except Exception as exc:
         recorder.fail_from_exception(exc)
         try:
