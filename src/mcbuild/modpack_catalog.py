@@ -507,6 +507,21 @@ def compile_sector_palette(
         candidates.sort(key=lambda c: (-c.score, c.block_id))
         slots[role] = candidates[:per_role]
 
+    restricted_pools = {
+        safety_class: [
+            {
+                "block_id": record.block_id,
+                "roles": record.roles,
+                "economic_cost": record.safety.economic_cost,
+                "progression_tier": record.safety.progression_tier,
+                "reasons": record.safety.reasons,
+            }
+            for record in records
+            if record.safety.safety_class == safety_class
+        ]
+        for safety_class in ("functional", "prestige", "forbidden")
+    }
+
     return {
         "schema_version": 2,
         "safety_policy": {
@@ -516,6 +531,15 @@ def compile_sector_palette(
             "prestige_blocks": "budgeted_explicit_use_only",
             "forbidden_blocks": "never_auto_place",
         },
+        "default_sector_budget": {
+            "common": 1000000,
+            "unclassified": 0,
+            "rare": 16,
+            "very_rare": 2,
+            "late_game": 0,
+            "planner_only": 0,
+            "forbidden": 0,
+        },
         "anchor_mods": sorted(anchor_mod_set),
         "anchor_blocks": sorted(anchor_block_set),
         "anchor_profile": asdict(profile) if profile else None,
@@ -523,6 +547,7 @@ def compile_sector_palette(
             role: [asdict(item) for item in items]
             for role, items in slots.items()
         },
+        "restricted_pools": restricted_pools,
     }
 
 
