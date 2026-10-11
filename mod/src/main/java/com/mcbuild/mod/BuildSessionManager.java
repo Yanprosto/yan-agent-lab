@@ -774,9 +774,9 @@ public final class BuildSessionManager {
                 throw new IllegalStateException("No energy storage at " + pos.toShortString());
             }
 
-            long before = storage.getEnergyStored();
-            long remaining = requested;
+            long capabilityBefore = storage.getEnergyStored();
             long reportedAccepted = 0;
+            long remaining = requested;
             while (remaining > 0) {
                 int batch = (int) Math.min(Integer.MAX_VALUE, remaining);
                 int accepted = storage.receiveEnergy(batch, false);
@@ -786,59 +786,58 @@ public final class BuildSessionManager {
                 reportedAccepted += accepted;
                 remaining -= accepted;
             }
+            long capabilityAfter = storage.getEnergyStored();
 
-            long afterCapability = storage.getEnergyStored();
             boolean usedMekanismDirectSet = false;
+            long mekanismBefore = -1;
+            long mekanismAfter = -1;
 
-            // Creative Mekanism containers can report simulated acceptance without mutating
-            // stored energy. If the real value did not move, use Mekanism's own container
-            // API and verify the post-state instead of trusting the capability return value.
-            if (afterCapability <= before) {
-                BlockEntity be = level.getBlockEntity(pos);
-                if (be != null && be.getClass().getName().startsWith("mekanism.")) {
-                    try {
-                        Object container = be.getClass().getMethod("getEnergyContainer").invoke(be);
-                        if (container != null) {
-                            java.lang.reflect.Method setEnergy = null;
-                            for (java.lang.reflect.Method method : container.getClass().getMethods()) {
-                                if ("setEnergy".equals(method.getName())
-                                        && method.getParameterCount() == 2
-                                        && method.getParameterTypes()[0] == long.class) {
-                                    setEnergy = method;
-                                    break;
-                                }
-                            }
-                            if (setEnergy != null) {
-                                long target = Math.max(before, requested);
-                                setEnergy.invoke(container, target, null);
-                                usedMekanismDirectSet = true;
-                                be.setChanged();
-                                invokeOptional(be, "sendUpdatePacket", new Class<?>[0], new Object[0]);
-                            }
+            BlockEntity be = level.getBlockEntity(pos);
+            if (be != null && be.getClass().getName().startsWith("mekanism.")) {
+                try {
+                    Object container = be.getClass().getMethod("getEnergyContainer").invoke(be);
+                    if (container != null) {
+                        java.lang.reflect.Method getEnergy = container.getClass().getMethod("getEnergy");
+                        mekanismBefore = ((Number) getEnergy.invoke(container)).longValue();
+
+                        if (mekanismBefore <= 0) {
+                            // Mekanism 1.21.x IEnergyContainer#setEnergy(long).
+                            java.lang.reflect.Method setEnergy =
+                                    container.getClass().getMethod("setEnergy", long.class);
+                            setEnergy.invoke(container, requested);
+                            usedMekanismDirectSet = true;
+                            be.setChanged();
+                            invokeOptional(be, "sendUpdatePacket", new Class<?>[0], new Object[0]);
                         }
-                    } catch (NoSuchMethodException ignored) {
-                        // Non-Mekanism-generic energy holder: capability path above is authoritative.
+
+                        mekanismAfter = ((Number) getEnergy.invoke(container)).longValue();
                     }
+                } catch (NoSuchMethodException ignored) {
+                    // Generic non-Mekanism container: capability path above remains authoritative.
                 }
             }
 
             IEnergyStorage verify = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, side);
-            long after = verify == null ? 0 : verify.getEnergyStored();
+            long capabilityVerified = verify == null ? 0 : verify.getEnergyStored();
+            long authoritativeAfter = mekanismAfter >= 0 ? mekanismAfter : capabilityVerified;
+            long authoritativeBefore = mekanismBefore >= 0 ? mekanismBefore : capabilityBefore;
 
             JsonObject result = baseLocationResult(pos);
             result.addProperty("side", side == null ? "unsided" : side.getName());
             result.addProperty("requested", requested);
-            result.addProperty("energy_before", before);
+            result.addProperty("capability_before", capabilityBefore);
+            result.addProperty("capability_after", capabilityVerified);
             result.addProperty("reported_accepted", reportedAccepted);
-            result.addProperty("energy_after_capability", afterCapability);
-            result.addProperty("energy_after", after);
+            result.addProperty("mekanism_before", mekanismBefore);
+            result.addProperty("mekanism_after", mekanismAfter);
             result.addProperty("used_mekanism_direct_set", usedMekanismDirectSet);
-            result.addProperty("verified_increase", after > before);
+            result.addProperty("verified_increase", authoritativeAfter > authoritativeBefore);
 
-            if (after <= before) {
+            if (authoritativeAfter <= authoritativeBefore) {
                 throw new IllegalStateException(
                         "seed_energy failed to increase stored energy at " + pos.toShortString()
-                                + " before=" + before + " after=" + after
+                                + " capability=" + capabilityBefore + "->" + capabilityVerified
+                                + " mekanism=" + mekanismBefore + "->" + mekanismAfter
                                 + " reportedAccepted=" + reportedAccepted);
             }
             return result;
