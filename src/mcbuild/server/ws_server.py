@@ -13,10 +13,11 @@ from websockets.asyncio.server import ServerConnection, serve
 
 from mcbuild.config import Config
 from mcbuild.server import protocol
+from mcbuild.server.environment_planner import BranchRoute, RoutePlan, generate_route_plans, replan_failed_branch
 from mcbuild.server.project_session import run_project_session
 from mcbuild.server.run_logger import LoggedConnection, RunRecorder
 from mcbuild.server.session import run_build_session
-from mcbuild.server.skill_store import list_skills, save_skill
+from mcbuild.server.skill_store import list_skills, load_skill, save_skill
 from mcbuild.server.spatial_search import SpatialCandidate, generate_spatial_candidates
 from mcbuild.server.topology_search import TopologyCandidate, generate_two_branch_candidates
 
@@ -37,8 +38,8 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
 
     command = request.get("cmd")
     prompt = request.get("prompt", "")
-    if command not in {"build", "project", "probe", "functional", "experiment", "mekanism", "splitter"}:
-        await connection.send(protocol.error('Expected {"cmd": "build|project|probe|functional|experiment|mekanism|splitter", ...}.'))
+    if command not in {"build", "project", "probe", "functional", "experiment", "mekanism", "splitter", "environment"}:
+        await connection.send(protocol.error('Expected {"cmd": "build|project|probe|functional|experiment|mekanism|splitter|environment", ...}.'))
         return
     if command in {"build", "project"} and (not isinstance(prompt, str) or not prompt.strip()):
         await connection.send(protocol.error('Expected non-empty "prompt" for build/project.'))
@@ -66,8 +67,10 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
             await _run_experiment_session(logged_connection)
         elif command == "mekanism":
             await _run_mekanism_experiment_session(logged_connection)
-        else:
+        elif command == "splitter":
             await _run_spatial_search_session(logged_connection)
+        else:
+            await _run_environment_build_session(logged_connection)
     except Exception as exc:
         recorder.fail_from_exception(exc)
         try:
@@ -1598,6 +1601,461 @@ async def _run_spatial_search_session(connection: ServerConnection) -> None:
         f"blocks={best['actual_blocks']} score={best['score']} "
         "skill=mekanism_two_branch_distribution_v3 worldClean=true"
     ))
+
+
+def _pos_tuple(row: dict[str, Any]) -> tuple[int, int, int]:
+    return int(row["x"]), int(row["y"]), int(row["z"])
+
+
+def _pos_args(pos: tuple[int, int, int]) -> dict[str, int]:
+    return {"x": pos[0], "y": pos[1], "z": pos[2]}
+
+
+async def _scan_environment_scene(connection: ServerConnection) -> dict[str, Any]:
+    """Discover the user's existing three-chest scene and all obstacles around it."""
+    lo = (-6, -1, -6)
+    hi = (6, 3, 6)
+    positions = [
+        {"x": x, "y": y, "z": z}
+        for x in range(lo[0], hi[0] + 1)
+        for y in range(lo[1], hi[1] + 1)
+        for z in range(lo[2], hi[2] + 1)
+    ]
+    observed = await _action(
+        connection,
+        "env-scan",
+        "inspect_blocks",
+        {"positions": positions},
+        timeout=20.0,
+    )
+    blocks = observed.get("blocks") or []
+    chest_rows = [row for row in blocks if row.get("block") == "minecraft:chest"]
+    if len(chest_rows) != 3:
+        raise RuntimeError(
+            f"scene requires exactly 3 minecraft:chest blocks inside scan volume; found {len(chest_rows)}"
+        )
+
+    inventories: list[tuple[tuple[int, int, int], dict[str, Any]]] = []
+    for index, row in enumerate(chest_rows, start=1):
+        pos = _pos_tuple(row)
+        inv = await _action(
+            connection,
+            f"env-identify-chest-{index}",
+            "read_inventory",
+            _pos_args(pos),
+        )
+        inventories.append((pos, inv))
+
+    source_candidates: list[tuple[int, int, int]] = []
+    empty: list[tuple[int, int, int]] = []
+    for pos, inv in inventories:
+        items = inv.get("items") or []
+        raw_iron = sum(
+            int(item.get("count") or 0)
+            for item in items
+            if item.get("item") == "minecraft:raw_iron"
+        )
+        total = int(inv.get("total_items") or 0)
+        if total == 6 and raw_iron == 6:
+            source_candidates.append(pos)
+        elif total == 0:
+            empty.append(pos)
+
+    if len(source_candidates) != 1 or len(empty) != 2:
+        raise RuntimeError(
+            "scene contract not satisfied: need one chest containing exactly 6 raw iron "
+            f"and two empty chests; sourceCandidates={source_candidates}, empty={empty}"
+        )
+
+    source = source_candidates[0]
+    sinks = (empty[0], empty[1])
+    endpoints = {source, *sinks}
+    occupied = {
+        _pos_tuple(row)
+        for row in blocks
+        if not row.get("is_air", False) and _pos_tuple(row) not in endpoints
+    }
+
+    return {
+        "source": source,
+        "sinks": sinks,
+        "occupied": occupied,
+        "bounds": (lo, hi),
+        "scan_blocks": len(blocks),
+        "obstacle_count": len(occupied),
+    }
+
+
+async def _place_environment_branch(
+    connection: ServerConnection,
+    *,
+    branch: BranchRoute,
+    label: str,
+) -> None:
+    for index, pos in enumerate(branch.path, start=1):
+        await _action(
+            connection,
+            f"{label}-place-{index}",
+            "place_block",
+            {**_pos_args(pos), "block": "mekanism:basic_logistical_transporter"},
+        )
+
+    await _action(connection, f"{label}-settle", "wait_ticks", {"ticks": 10}, timeout=5.0)
+    start = branch.path[0]
+    configured = await _action(
+        connection,
+        f"{label}-pull",
+        "mek_set_transporter_mode",
+        {**_pos_args(start), "side": branch.source_side, "mode": "PULL"},
+    )
+    await connection.send(protocol.chat(
+        f"[yan-agent] {label}: built length={len(branch.path)} "
+        f"sourceSide={branch.source_side} mode={configured.get('after')}"
+    ))
+
+
+async def _remove_environment_branch(
+    connection: ServerConnection,
+    *,
+    branch: BranchRoute,
+    label: str,
+) -> None:
+    # Remove from the sink end backwards so the source extractor remains live until last.
+    removed = 0
+    for index, pos in enumerate(reversed(branch.path), start=1):
+        try:
+            result = await _action(
+                connection,
+                f"{label}-remove-{index}",
+                "remove_block",
+                _pos_args(pos),
+            )
+            if result.get("is_air"):
+                removed += 1
+        except RuntimeError as exc:
+            await connection.send(protocol.chat(
+                f"[yan-agent] {label}: remove warning at {pos}: {exc}"
+            ))
+    await connection.send(protocol.chat(
+        f"[yan-agent] {label}: LOCAL REMOVE removed={removed}/{len(branch.path)}"
+    ))
+
+
+async def _read_environment_result(
+    connection: ServerConnection,
+    *,
+    source: tuple[int, int, int],
+    sinks: tuple[tuple[int, int, int], tuple[int, int, int]],
+    label: str,
+) -> dict[str, Any]:
+    src = await _action(connection, f"{label}-read-source", "read_inventory", _pos_args(source))
+    left = await _action(connection, f"{label}-read-sink-1", "read_inventory", _pos_args(sinks[0]))
+    right = await _action(connection, f"{label}-read-sink-2", "read_inventory", _pos_args(sinks[1]))
+    source_n = int(src.get("total_items") or 0)
+    left_n = int(left.get("total_items") or 0)
+    right_n = int(right.get("total_items") or 0)
+    total = source_n + left_n + right_n
+    passed = source_n == 0 and left_n > 0 and right_n > 0 and total == 6
+    return {
+        "source": source_n,
+        "left": left_n,
+        "right": right_n,
+        "total": total,
+        "passed": passed,
+        "imbalance": abs(left_n - right_n),
+    }
+
+
+async def _reset_environment_items(
+    connection: ServerConnection,
+    *,
+    source: tuple[int, int, int],
+    sinks: tuple[tuple[int, int, int], tuple[int, int, int]],
+    label: str,
+) -> None:
+    removed = 0
+    for role, pos in (("source", source), ("sink-1", sinks[0]), ("sink-2", sinks[1])):
+        drained = await _action(
+            connection,
+            f"{label}-drain-{role}",
+            "drain_inventory",
+            {**_pos_args(pos), "item": "minecraft:raw_iron"},
+        )
+        removed += int(drained.get("removed_total") or 0)
+    seeded = await _action(
+        connection,
+        f"{label}-reseed",
+        "seed_item",
+        {**_pos_args(source), "item": "minecraft:raw_iron", "count": 6},
+    )
+    await connection.send(protocol.chat(
+        f"[yan-agent] {label}: RESET ITEMS removed={removed} reseeded={seeded.get('inserted')}/6"
+    ))
+
+
+async def _run_environment_build_session(connection: ServerConnection) -> None:
+    """v1.0: discover an existing scene, route around obstacles, locally repair, leave success built."""
+    await connection.send(protocol.hello("yan-environment-builder-v1.0"))
+    await connection.send(protocol.chat(
+        "[yan-agent] v1.0: scanning existing world. I will not create or move endpoints/obstacles."
+    ))
+
+    skill = load_skill("mekanism_two_branch_distribution_v3")
+    if skill is None:
+        await connection.send(protocol.error(
+            "environment builder v1.0 requires verified skill mekanism_two_branch_distribution_v3"
+        ))
+        return
+    implementation = skill.get("implementation") or {}
+    if int(implementation.get("extractor_count") or 0) != 2:
+        await connection.send(protocol.error(
+            "v3 skill is incompatible: expected extractor_count=2"
+        ))
+        return
+
+    scene: dict[str, Any] | None = None
+    active_branches: list[BranchRoute] = []
+    repair_count = 0
+    plan_history: list[dict[str, Any]] = []
+
+    try:
+        scene = await _scan_environment_scene(connection)
+        source = scene["source"]
+        sinks = scene["sinks"]
+        occupied = scene["occupied"]
+        bounds = scene["bounds"]
+
+        await connection.send(protocol.chat(
+            f"[yan-agent] SCENE: source={source} sinks={sinks} "
+            f"obstacles={scene['obstacle_count']} scanned={scene['scan_blocks']}"
+        ))
+        await connection.send(protocol.chat(
+            "[yan-agent] MEMORY: using v3 primitive = two independent PULL extractors; "
+            "geometry will be planned from observed free space."
+        ))
+
+        plans = generate_route_plans(
+            source=source,
+            sinks=sinks,
+            occupied=occupied,
+            bounds=bounds,
+            max_plans=5,
+        )
+        if not plans:
+            raise RuntimeError("planner found no pair of routes from source to both sinks")
+
+        for plan in plans:
+            await connection.send(protocol.chat(
+                f"[yan-agent] PLAN {plan.plan_id}: mode={plan.mode} cost={plan.cost} "
+                f"lengths={[len(branch.path) for branch in plan.branches]}"
+            ))
+
+        # Start with the cheapest naive plan so live feedback, not only geometry,
+        # determines whether the two Mekanism networks are actually independent.
+        current_plan = plans[0]
+        await connection.send(protocol.chat(
+            f"[yan-agent] BUILD PLAN {current_plan.plan_id}: preserving all existing obstacles/endpoints."
+        ))
+        for index, branch in enumerate(current_plan.branches, start=1):
+            await _place_environment_branch(
+                connection,
+                branch=branch,
+                label=f"{current_plan.plan_id}-branch-{index}",
+            )
+            active_branches.append(branch)
+
+        await _action(connection, "env-initial-flow", "wait_ticks", {"ticks": 180}, timeout=18.0)
+        result = await _read_environment_result(
+            connection, source=source, sinks=sinks, label="env-initial"
+        )
+        plan_history.append({"plan": current_plan.as_dict(), "result": result})
+        await connection.send(protocol.chat(
+            f"[yan-agent] OBSERVE initial: source={result['source']} "
+            f"sink1={result['left']} sink2={result['right']} total={result['total']} "
+            f"pass={result['passed']}"
+        ))
+
+        if not result["passed"]:
+            starved = [
+                index
+                for index, count in enumerate((result["left"], result["right"]))
+                if count == 0
+            ]
+            live = [
+                index
+                for index, count in enumerate((result["left"], result["right"]))
+                if count > 0
+            ]
+
+            if len(starved) == 1 and len(live) == 1:
+                failed_index = starved[0]
+                working_index = live[0]
+                failed_branch = active_branches[failed_index]
+                working_branch = active_branches[working_index]
+
+                await connection.send(protocol.chat(
+                    f"[yan-agent] DIAGNOSE: sink{failed_index + 1} starved while "
+                    f"sink{working_index + 1} is live. Keeping working branch and repairing only failed branch."
+                ))
+                await _reset_environment_items(
+                    connection, source=source, sinks=sinks, label="env-local-repair"
+                )
+                await _remove_environment_branch(
+                    connection,
+                    branch=failed_branch,
+                    label=f"failed-branch-{failed_index + 1}",
+                )
+
+                alternatives = replan_failed_branch(
+                    source=source,
+                    sink=sinks[failed_index],
+                    occupied=occupied,
+                    working_path=set(working_branch.path),
+                    bounds=bounds,
+                    avoid_paths=[set(failed_branch.path)],
+                )
+                if not alternatives:
+                    raise RuntimeError("local repair planner found no alternative route for starved branch")
+
+                repaired = False
+                for alt_index, alternative in enumerate(alternatives[:3], start=1):
+                    repair_count += 1
+                    await connection.send(protocol.chat(
+                        f"[yan-agent] LOCAL REPAIR {repair_count}: reroute only sink{failed_index + 1}; "
+                        f"newLength={len(alternative.path)} sourceSide={alternative.source_side}"
+                    ))
+                    await _place_environment_branch(
+                        connection,
+                        branch=alternative,
+                        label=f"repair-{repair_count}",
+                    )
+                    active_branches[failed_index] = alternative
+
+                    await _action(
+                        connection,
+                        f"repair-{repair_count}-flow",
+                        "wait_ticks",
+                        {"ticks": 180},
+                        timeout=18.0,
+                    )
+                    result = await _read_environment_result(
+                        connection,
+                        source=source,
+                        sinks=sinks,
+                        label=f"repair-{repair_count}",
+                    )
+                    plan_history.append({
+                        "repair": repair_count,
+                        "branch": alternative.as_dict(),
+                        "result": result,
+                    })
+                    await connection.send(protocol.chat(
+                        f"[yan-agent] OBSERVE repair-{repair_count}: source={result['source']} "
+                        f"sink1={result['left']} sink2={result['right']} pass={result['passed']}"
+                    ))
+                    if result["passed"]:
+                        repaired = True
+                        break
+
+                    await _reset_environment_items(
+                        connection,
+                        source=source,
+                        sinks=sinks,
+                        label=f"repair-{repair_count}-reset",
+                    )
+                    await _remove_environment_branch(
+                        connection,
+                        branch=alternative,
+                        label=f"repair-{repair_count}-failed",
+                    )
+
+                if not repaired:
+                    raise RuntimeError("local repairs exhausted without activating both sinks")
+            else:
+                # If the failure is not a single-starved-branch case, use the best
+                # skill-informed separated full plan as a fallback.
+                await connection.send(protocol.chat(
+                    "[yan-agent] DIAGNOSE: failure is not isolated to one branch; "
+                    "falling back to a full skill-informed separated plan."
+                ))
+                await _reset_environment_items(
+                    connection, source=source, sinks=sinks, label="env-full-replan"
+                )
+                rolled = await _action(connection, "env-full-rollback", "rollback_session", {})
+                active_branches.clear()
+                await connection.send(protocol.chat(
+                    f"[yan-agent] FULL REPLAN rollback removed={rolled.get('removed')}"
+                ))
+
+                fallback = next((p for p in plans if p.mode == "separated"), None)
+                if fallback is None:
+                    raise RuntimeError("no separated fallback plan available")
+                for index, branch in enumerate(fallback.branches, start=1):
+                    await _place_environment_branch(
+                        connection,
+                        branch=branch,
+                        label=f"fallback-branch-{index}",
+                    )
+                    active_branches.append(branch)
+                await _action(connection, "env-fallback-flow", "wait_ticks", {"ticks": 180}, timeout=18.0)
+                result = await _read_environment_result(
+                    connection, source=source, sinks=sinks, label="env-fallback"
+                )
+                plan_history.append({"plan": fallback.as_dict(), "result": result})
+                if not result["passed"]:
+                    raise RuntimeError(f"separated fallback also failed: {result}")
+
+        # PASS: deliberately preserve the built solution and the item distribution.
+        successful_paths = [branch.as_dict() for branch in active_branches]
+        skill_path = save_skill(
+            "environment_aware_two_branch_v1",
+            description=(
+                "Verified environment-aware Mekanism routing over user-provided endpoints and obstacles. "
+                "Successful network is preserved in-world instead of rolled back."
+            ),
+            implementation={
+                "base_skill": "mekanism_two_branch_distribution_v3",
+                "source": list(source),
+                "sinks": [list(s) for s in sinks],
+                "paths": successful_paths,
+                "repair_count": repair_count,
+                "obstacle_count": scene["obstacle_count"],
+                "planner": "A* with live-flow validation and local failed-branch repair",
+            },
+            verification={
+                **result,
+                "world_preserved": True,
+                "plan_history": plan_history,
+            },
+            source_experiment="yan-environment-builder-v1.0",
+        )
+        await connection.send(protocol.chat(
+            f"[yan-agent] ACCEPT: existing scene solved. Network preserved in world. "
+            f"repairCount={repair_count} skill={skill_path.name}"
+        ))
+        await connection.send(protocol.finish(
+            "environment builder v1.0 PASS: "
+            f"source={result['source']} sink1={result['left']} sink2={result['right']} "
+            f"repairs={repair_count} obstacles={scene['obstacle_count']} "
+            "worldPreserved=true skill=environment_aware_two_branch_v1"
+        ))
+
+    except (RuntimeError, KeyError, TypeError, ValueError) as exc:
+        try:
+            rolled = await _action(connection, "env-emergency-rollback", "rollback_session", {})
+            await connection.send(protocol.chat(
+                f"[yan-agent] EMERGENCY ROLLBACK removed={rolled.get('removed')}"
+            ))
+            if scene is not None:
+                await _reset_environment_items(
+                    connection,
+                    source=scene["source"],
+                    sinks=scene["sinks"],
+                    label="env-emergency-reset",
+                )
+        except RuntimeError:
+            pass
+        await connection.send(protocol.error(f"environment builder v1.0 FAIL: {exc}"))
 
 
 async def _serve(host: str, port: int, config: Config) -> None:
