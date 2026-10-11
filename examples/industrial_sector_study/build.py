@@ -4,6 +4,7 @@ No LLM/API required.
 """
 from __future__ import annotations
 from mcbuild.voxel import VoxelGrid
+from mcbuild import palette
 
 MATS = {
     "D":"deepslate_tiles",
@@ -17,19 +18,29 @@ MATS = {
     "S":"smooth_stone",
 }
 
+_IDX = {}
+
+def _idx(name):
+    value = _IDX.get(name)
+    if value is None:
+        value = palette.get_block(name).index
+        _IDX[name] = value
+    return value
+
 def _fill(g,a,b,m):
+    idx = _idx(m)
     x1,y1,z1=a; x2,y2,z2=b
     for x in range(min(x1,x2),max(x1,x2)+1):
         for y in range(min(y1,y2),max(y1,y2)+1):
             for z in range(min(z1,z2),max(z1,z2)+1):
-                g.set(x,y,z,m)
+                g.set(x,y,z,idx)
 
 def _clear(g,a,b):
     x1,y1,z1=a; x2,y2,z2=b
     for x in range(min(x1,x2),max(x1,x2)+1):
         for y in range(min(y1,y2),max(y1,y2)+1):
             for z in range(min(z1,z2),max(z1,z2)+1):
-                g.set(x,y,z,None)
+                g.clear_block(x,y,z)
 
 def _room(g,x,y,z,w,h,d,wall):
     _fill(g,(x,y,z),(x+w-1,y+h-1,z+d-1),wall)
