@@ -15,6 +15,7 @@ from typing import Any
 from mcbuild.server import protocol
 from mcbuild.server.industrial_planner import rank_iron_works_candidates
 from mcbuild.server.industry_session import (
+    _action,
     _build_stage_cell,
     _configure_transporter_pull,
     _inspect_footprint,
@@ -292,7 +293,6 @@ async def run_iron_works_session(goal: str, connection) -> None:
 
     except (RuntimeError, KeyError, TypeError, ValueError) as exc:
         try:
-            from mcbuild.server.industry_session import _action
             rolled = await _action(connection, "ironworks-emergency-rollback", "rollback_session", {})
             await connection.send(protocol.chat(
                 f"[yan-agent] IRON WORKS ROLLBACK removed={rolled.get('removed')} "
