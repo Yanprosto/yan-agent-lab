@@ -64,3 +64,55 @@ def test_scan_synthetic_mod_and_compile_palette(tmp_path):
 
     assert "example:steel_panel" in structural
     assert "example:industrial_lamp" in lights
+
+
+def test_safety_layer_blocks_functional_prestige_and_forbidden_from_architecture(tmp_path):
+    mods = tmp_path / "mods"
+    mods.mkdir()
+    jar = mods / "safety.jar"
+
+    entries = {
+        "steel_panel": (80, 90, 100),
+        "mekanism_like_smelter": (75, 85, 95),
+        "diamond_block": (90, 220, 220),
+        "creative_energy_cube": (120, 80, 180),
+    }
+
+    with zipfile.ZipFile(jar, "w") as zf:
+        for name, rgb in entries.items():
+            zf.writestr(
+                f"assets/example/blockstates/{name}.json",
+                json.dumps({"variants": {"": {"model": f"example:block/{name}"}}}),
+            )
+            zf.writestr(
+                f"assets/example/models/block/{name}.json",
+                json.dumps({"textures": {"all": f"example:block/{name}"}}),
+            )
+            zf.writestr(f"assets/example/textures/block/{name}.png", _png(rgb))
+
+    records = scan_mod_jars(mods)
+    by_id = {record.block_id: record for record in records}
+
+    assert by_id["example:steel_panel"].safety.safety_class == "architecture"
+    assert by_id["example:steel_panel"].safety.mass_use_allowed is True
+
+    assert by_id["example:mekanism_like_smelter"].safety.safety_class == "functional"
+    assert by_id["example:mekanism_like_smelter"].safety.architecture_allowed is False
+
+    assert by_id["example:diamond_block"].safety.safety_class == "prestige"
+    assert by_id["example:diamond_block"].safety.architecture_allowed is False
+
+    assert by_id["example:creative_energy_cube"].safety.safety_class == "forbidden"
+    assert by_id["example:creative_energy_cube"].safety.architecture_allowed is False
+
+    palette = compile_sector_palette(records, anchor_mods=["example"], per_role=20)
+    architectural_ids = {
+        row["block_id"]
+        for role in ("structural", "floor", "decor", "light", "glass")
+        for row in palette["slots"][role]
+    }
+
+    assert "example:steel_panel" in architectural_ids
+    assert "example:mekanism_like_smelter" not in architectural_ids
+    assert "example:diamond_block" not in architectural_ids
+    assert "example:creative_energy_cube" not in architectural_ids
