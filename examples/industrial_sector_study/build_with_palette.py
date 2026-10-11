@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from mcbuild.export.schem import export_schem
-from mcbuild.render.camera import render_isometric
+from mcbuild.render.camera import CameraRenderError, render_isometric
 from mcbuild.sector_materials import apply_to_industrial_study, resolve_sector_materials
 
 from examples.industrial_sector_study import build as study
@@ -48,11 +48,43 @@ def main() -> None:
         'bounds': grid.bounds,
         'materials': mats.to_dict(),
         'palette_warnings': list(grid.palette_warnings),
+        'render_mode': render_mode,
     }
     (out / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
 
+    render_mode = 'none'
     if not args.no_render:
-        img = render_isometric(grid, yaw=0, width=1200, height=1000, shadows=False)
+        # Keep previews responsive on 100k-500k block sectors. Large builds use a
+        # deterministic cutaway instead of asking the CPU rasterizer to chew through
+        # every exposed block at once.
+        bounds = grid.bounds
+        assert bounds is not None
+        (_, _, minz), (_, _, maxz) = bounds
+        cut_z = (minz + maxz) // 2
+
+        def cutaway(pos):
+            return pos[2] >= cut_z
+
+        try:
+            if len(grid) > 250_000:
+                img = render_isometric(
+                    grid, yaw=0, keep=cutaway, width=900, height=760,
+                    max_blocks=220_000, shadows=False,
+                )
+                render_mode = 'cutaway'
+            else:
+                img = render_isometric(
+                    grid, yaw=0, width=900, height=760,
+                    max_blocks=220_000, shadows=False,
+                )
+                render_mode = 'full'
+        except CameraRenderError:
+            img = render_isometric(
+                grid, yaw=0, keep=cutaway, width=900, height=760,
+                max_blocks=220_000, shadows=False,
+            )
+            render_mode = 'cutaway_fallback'
+
         img.save(out / 'overview.png')
 
     print('=' * 80)
@@ -66,6 +98,7 @@ def main() -> None:
         print(f'  {key}: {value}')
     print('schem:', out / 'sector.schem')
     if not args.no_render:
+        print('render_mode:', render_mode)
         print('preview:', out / 'overview.png')
 
 
