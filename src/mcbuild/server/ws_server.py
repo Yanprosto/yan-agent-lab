@@ -14,6 +14,7 @@ from websockets.asyncio.server import ServerConnection, serve
 from mcbuild.config import Config
 from mcbuild.server import protocol
 from mcbuild.server.project_session import run_project_session
+from mcbuild.server.run_logger import LoggedConnection, RunRecorder
 from mcbuild.server.session import run_build_session
 from mcbuild.server.skill_store import list_skills, save_skill
 
@@ -45,24 +46,47 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
         await connection.send(protocol.error("A build is already in progress; try again shortly."))
         return
 
+    recorder = RunRecorder(command=command, prompt=prompt if isinstance(prompt, str) else "")
+    recorder.record("REQUEST", command=command, prompt=prompt if isinstance(prompt, str) else "")
+    logged_connection = LoggedConnection(connection, recorder)
+
     _task_in_progress = True
     try:
         if command == "build":
-            await run_build_session(prompt, connection.send, config=config)
+            await run_build_session(prompt, logged_connection.send, config=config)
         elif command == "project":
-            await run_project_session(prompt, connection.send, config=config)
+            await run_project_session(prompt, logged_connection.send, config=config)
         elif command == "probe":
-            await _run_probe_session(connection)
+            await _run_probe_session(logged_connection)
         elif command == "functional":
-            await _run_functional_session(connection)
+            await _run_functional_session(logged_connection)
         elif command == "experiment":
-            await _run_experiment_session(connection)
+            await _run_experiment_session(logged_connection)
         elif command == "mekanism":
-            await _run_mekanism_experiment_session(connection)
+            await _run_mekanism_experiment_session(logged_connection)
         else:
-            await _run_splitter_experiment_session(connection)
+            await _run_splitter_experiment_session(logged_connection)
+    except Exception as exc:
+        recorder.fail_from_exception(exc)
+        try:
+            await logged_connection.send(protocol.error(
+                f"Unhandled server exception: {exc.__class__.__name__}: {exc}"
+            ))
+        except Exception:
+            pass
     finally:
         _task_in_progress = False
+        publish = await asyncio.to_thread(recorder.finalize_and_publish)
+        if publish.get("published"):
+            print(
+                f"[yan-runtime] published {recorder.run_id} "
+                f"commit={publish.get('commit') or '-'} branch={publish.get('branch')}"
+            )
+        else:
+            print(
+                f"[yan-runtime] local-only {recorder.run_id}: "
+                f"{publish.get('reason')} ({publish.get('run_dir')})"
+            )
 
 
 async def _action(

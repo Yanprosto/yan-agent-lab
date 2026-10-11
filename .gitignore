@@ -8,3 +8,6 @@ mod/build/
 build/
 .idea/
 .vscode/
+
+.yan_runtime_runs/
+.yan_runtime_logs_repo/
