@@ -18,3 +18,13 @@ not required for every design. Preserve working infrastructure and account for r
 
 Runtime work: feature branch, draft PR, live verification before merging behavior changes.
 Documentation-only evidence preservation does not require a Minecraft run.
+
+## Reuse before new subsystems
+
+Read `docs/REUSE_CATALOG.md` before introducing a new planning, rendering, building,
+repair, memory or reconnaissance subsystem. Check existing mcbuild components first.
+Record the considered existing tool/module and the reason for reuse, adaptation or
+custom implementation in the PR. Keep deferred candidates with a reason and return
+condition; do not silently discard them between conversations. Catalog entries are
+candidates unless explicitly marked integrated. Verify target-version compatibility
+and the license of any code actually copied; preserve upstream notices and commit IDs.
