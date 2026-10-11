@@ -42,16 +42,6 @@ def main() -> None:
     )
     export_schem(grid, str(out / 'sector.schem'))
 
-    report = {
-        'kind': args.kind,
-        'blocks': len(grid),
-        'bounds': grid.bounds,
-        'materials': mats.to_dict(),
-        'palette_warnings': list(grid.palette_warnings),
-        'render_mode': render_mode,
-    }
-    (out / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
-
     render_mode = 'none'
     if not args.no_render:
         # Keep previews responsive on 100k-500k block sectors. Large builds use a
@@ -86,6 +76,19 @@ def main() -> None:
             render_mode = 'cutaway_fallback'
 
         img.save(out / 'overview.png')
+
+    report = {
+        'kind': args.kind,
+        'blocks': len(grid),
+        'bounds': grid.bounds,
+        'materials': mats.to_dict(),
+        'palette_warnings': list(grid.palette_warnings),
+        'render_mode': render_mode,
+    }
+    (out / 'report.json').write_text(
+        json.dumps(report, ensure_ascii=False, indent=2),
+        encoding='utf-8',
+    )
 
     print('=' * 80)
     print('YAN MIXED SECTOR BUILD COMPLETE')
