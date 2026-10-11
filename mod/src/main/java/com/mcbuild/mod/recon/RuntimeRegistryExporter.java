@@ -184,7 +184,7 @@ public final class RuntimeRegistryExporter {
 
     private static JsonArray tagsForBlock(Block block) {
         JsonArray tags = new JsonArray();
-        Holder.Reference<Block> holder = BuiltInRegistries.BLOCK.wrapAsHolder(block);
+        Holder<Block> holder = BuiltInRegistries.BLOCK.wrapAsHolder(block);
         holder.tags()
                 .map(tag -> tag.location().toString())
                 .sorted()
@@ -194,7 +194,7 @@ public final class RuntimeRegistryExporter {
 
     private static JsonArray tagsForItem(Item item) {
         JsonArray tags = new JsonArray();
-        Holder.Reference<Item> holder = BuiltInRegistries.ITEM.wrapAsHolder(item);
+        Holder<Item> holder = BuiltInRegistries.ITEM.wrapAsHolder(item);
         holder.tags()
                 .map(tag -> tag.location().toString())
                 .sorted()
