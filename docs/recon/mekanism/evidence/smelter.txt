@@ -1,0 +1,60 @@
+Source: targeted_javap.txt in MEKANISM_TARGETED_RECON_20261011_012311.zip
+Original line numbers are preserved below.
+
+--- original lines 13691-13724 ---
+13691: CLASS: mekanism.common.tile.machine.TileEntityEnergizedSmelter
+13692: ====================================================================================================
+13693: Compiled from "TileEntityEnergizedSmelter.java"
+13694: public class mekanism.common.tile.machine.TileEntityEnergizedSmelter extends mekanism.common.tile.prefab.TileEntityElectricMachine {
+13695:   public mekanism.common.tile.machine.TileEntityEnergizedSmelter(net.minecraft.core.BlockPos, net.minecraft.world.level.block.state.BlockState);
+13696:     descriptor: (Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)V
+13697:     Code:
+13698:        0: aload_0
+13699:        1: getstatic     #1                  // Field mekanism/common/registries/MekanismBlocks.ENERGIZED_SMELTER:Lmekanism/common/registration/impl/BlockRegistryObject;
+13700:        4: aload_1
+13701:        5: aload_2
+13702:        6: sipush        200
+13703:        9: invokespecial #9                  // Method mekanism/common/tile/prefab/TileEntityElectricMachine."<init>":(Lnet/minecraft/core/Holder;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;I)V
+13704:       12: return
+13705: 
+13706:   public mekanism.common.recipe.IMekanismRecipeTypeProvider<net.minecraft.world.item.crafting.SingleRecipeInput, mekanism.api.recipes.ItemStackToItemStackRecipe, mekanism.common.recipe.lookup.cache.InputRecipeCache$SingleItem<mekanism.api.recipes.ItemStackToItemStackRecipe>> getRecipeType();
+13707:     descriptor: ()Lmekanism/common/recipe/IMekanismRecipeTypeProvider;
+13708:     Code:
+13709:        0: getstatic     #13                 // Field mekanism/common/recipe/MekanismRecipeType.SMELTING:Lmekanism/common/registration/impl/RecipeTypeRegistryObject;
+13710:        3: areturn
+13711: 
+13712:   public mekanism.client.recipe_viewer.type.IRecipeViewerRecipeType<mekanism.api.recipes.ItemStackToItemStackRecipe> recipeViewerType();
+13713:     descriptor: ()Lmekanism/client/recipe_viewer/type/IRecipeViewerRecipeType;
+13714:     Code:
+13715:        0: getstatic     #19                 // Field mekanism/client/recipe_viewer/type/RecipeViewerRecipeType.SMELTING:Lmekanism/client/recipe_viewer/type/RVRecipeTypeWrapper;
+13716:        3: areturn
+13717: }
+13718: ====================================================================================================
+13719: CLASS: mekanism.common.tile.factory.TileEntityFactory
+13720: ====================================================================================================
+13721: Compiled from "TileEntityFactory.java"
+13722: public abstract class mekanism.common.tile.factory.TileEntityFactory<RECIPE extends mekanism.api.recipes.MekanismRecipe<?>> extends mekanism.common.tile.prefab.TileEntityConfigurableMachine implements mekanism.common.recipe.lookup.IRecipeLookupHandler<RECIPE> {
+13723:   protected static final int BASE_TICKS_REQUIRED = 200;
+13724:     descriptor: I
+
+--- original lines 15823-15830 ---
+15823:      114: aload_0
+15824:      115: aload_0
+15825:      116: aload_1
+15826:      117: getstatic     #70                 // Field mekanism/common/config/MekanismConfigTranslations.ENERGY_USAGE_SMELTER:Lmekanism/common/config/MekanismConfigTranslations;
+15827:      120: ldc           #73                 // String energizedSmelter
+15828:      122: ldc2_w        #18                 // long 50l
+15829:      125: invokestatic  #20                 // Method mekanism/common/config/value/CachedLongValue.definePositive:(Lmekanism/common/config/IMekanismConfig;Lnet/neoforged/neoforge/common/ModConfigSpec$Builder;Lmekanism/common/config/IConfigTranslation;Ljava/lang/String;J)Lmekanism/common/config/value/CachedLongValue;
+15830:      128: putfield      #75                 // Field energizedSmelter:Lmekanism/common/config/value/CachedLongValue;
+
+--- original lines 16277-16285 ---
+16277:      120: aload_0
+16278:      121: aload_0
+16279:      122: aload_1
+16280:      123: getstatic     #70                 // Field mekanism/common/config/MekanismConfigTranslations.ENERGY_STORAGE_SMELTER:Lmekanism/common/config/MekanismConfigTranslations;
+16281:      126: ldc           #73                 // String energizedSmelter
+16282:      128: ldc2_w        #18                 // long 20000l
+16283:      131: lconst_1
+16284:      132: invokestatic  #20                 // Method mekanism/common/config/value/CachedLongValue.definedMin:(Lmekanism/common/config/IMekanismConfig;Lnet/neoforged/neoforge/common/ModConfigSpec$Builder;Lmekanism/common/config/IConfigTranslation;Ljava/lang/String;JJ)Lmekanism/common/config/value/CachedLongValue;
+16285:      135: putfield      #75                 // Field energizedSmelter:Lmekanism/common/config/value/CachedLongValue;
+
