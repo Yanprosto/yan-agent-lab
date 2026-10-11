@@ -7,6 +7,17 @@ from collections import Counter
 from pathlib import Path
 from statistics import mean
 
+DYE_PREFIXES = (
+    'light_gray_', 'light_blue_', 'dark_red_', 'black_', 'blue_', 'brown_', 'cyan_',
+    'gray_', 'green_', 'lime_', 'magenta_', 'orange_', 'pink_', 'purple_', 'red_',
+    'white_', 'yellow_',
+)
+
+NON_BULK_CLASS_SUFFIXES = (
+    '.FallingBlock', '.CarpetBlock', '.CoralBlock', '.BaseCoralPlantBlock',
+    '.CoralPlantBlock', '.LeavesBlock',
+)
+
 FORBIDDEN_IDS = {
     'minecraft:air', 'minecraft:cave_air', 'minecraft:void_air',
     'minecraft:bedrock', 'minecraft:barrier', 'minecraft:structure_void',
@@ -62,7 +73,27 @@ def safety(block: dict) -> dict:
         return {'class': 'restricted', 'architecture_allowed': False, 'mass_use_allowed': False,
                 'progression': 'explicit_only', 'budget_class': 'restricted', 'reasons': ['no item counterpart']}
 
-    mass = bool(physical.get('can_occlude')) and not bool(physical.get('collision_empty'))
+    hierarchy = rt.get('block_class_hierarchy', [])
+    tags = set(rt.get('block_tags', []))
+    non_bulk_class = any(
+        any(cls.endswith(suffix) for suffix in NON_BULK_CLASS_SUFFIXES)
+        for cls in hierarchy
+    )
+    non_bulk_tag = any(
+        tag.endswith(':wool') or '/wool' in tag or tag.endswith(':wool_carpets') or '/coral_blocks' in tag
+        for tag in tags
+    )
+
+    mass = (
+        bool(physical.get('can_occlude'))
+        and not bool(physical.get('collision_empty'))
+        and not non_bulk_class
+        and not non_bulk_tag
+    )
+    if non_bulk_class:
+        reasons.append('runtime block class is non-bulk architectural material')
+    if non_bulk_tag:
+        reasons.append('runtime material tag is non-bulk architectural material')
     if physical.get('light_emission', 0):
         mass = False
         reasons.append('emits light; detail use only')
@@ -174,6 +205,32 @@ def merge_features(samples: list[dict]) -> dict | None:
     }
 
 
+def family_key(block_id: str, role: str) -> str:
+    ns, path = block_id.split(':', 1)
+    normalized = path
+    for prefix in DYE_PREFIXES:
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix):]
+            break
+    return f"{role}|{ns}|{normalized}"
+
+
+def diversified_top(scored: list[dict], role: str, limit: int, per_family: int = 2) -> list[dict]:
+    result = []
+    counts = Counter()
+    for item in scored:
+        family = family_key(item['id'], role)
+        if counts[family] >= per_family:
+            continue
+        counts[family] += 1
+        item = dict(item)
+        item['family'] = family
+        result.append(item)
+        if len(result) >= limit:
+            break
+    return result
+
+
 def build_palette(semantic: dict, visual: dict, per_role: int) -> dict:
     visuals = visual_map(visual)
     rows = []
@@ -226,7 +283,7 @@ def build_palette(semantic: dict, visual: dict, per_role: int) -> dict:
                 'budget_class': row['safety']['budget_class'],
             })
         scored.sort(key=lambda x: (-x['score'], x['id']))
-        slots[role] = scored[:per_role]
+        slots[role] = diversified_top(scored, role, per_role)
 
     restricted = {}
     for cls in ('functional','prestige','resource','restricted','forbidden'):
@@ -238,7 +295,7 @@ def build_palette(semantic: dict, visual: dict, per_role: int) -> dict:
     class_counts = Counter(r['safety']['class'] for r in rows)
     arch_source_counts = Counter(r['source'] for r in rows if r['safety']['architecture_allowed'])
     return {
-        'schema_version': 2,
+        'schema_version': 3,
         'kind': 'yan_fact_grounded_palette',
         'policy': {
             'source_of_truth': 'semantic runtime facts + visual catalog',
@@ -248,6 +305,8 @@ def build_palette(semantic: dict, visual: dict, per_role: int) -> dict:
             'storage_blocks': 'budgeted explicit use until recipe-cost graph exists',
             'forbidden': 'never auto-place',
             'role_assignment': 'shape-first; bulk roles exclude shaped/natural detail',
+            'material_assignment': 'runtime class hierarchy and material tags gate bulk use',
+            'family_diversity': 'color variants collapsed to max two candidates per family/slot',
         },
         'anchor_profile': anchor,
         'budgets': {
