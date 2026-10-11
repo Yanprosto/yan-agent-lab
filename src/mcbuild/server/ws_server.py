@@ -17,6 +17,7 @@ from mcbuild.server.project_session import run_project_session
 from mcbuild.server.run_logger import LoggedConnection, RunRecorder
 from mcbuild.server.session import run_build_session
 from mcbuild.server.skill_store import list_skills, save_skill
+from mcbuild.server.topology_search import TopologyCandidate, generate_two_branch_candidates
 
 # Only one task runs at a time in this version; a second connection while a task is in
 # flight is rejected outright rather than queued.
@@ -65,7 +66,7 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
         elif command == "mekanism":
             await _run_mekanism_experiment_session(logged_connection)
         else:
-            await _run_splitter_experiment_session(logged_connection)
+            await _run_topology_search_session(logged_connection)
     except Exception as exc:
         recorder.fail_from_exception(exc)
         try:
@@ -977,6 +978,277 @@ async def _run_splitter_experiment_session(connection: ServerConnection) -> None
         f"tried={len(history)} accepted={accepted['name']} topology={accepted_topology}; "
         f"left={accepted['left']} right={accepted['right']} imbalance={accepted['imbalance']}; "
         f"skill=mekanism_two_branch_distribution_v1; worldClean=true"
+    ))
+
+
+async def _build_generated_dual_pull_candidate(
+    connection: ServerConnection,
+    candidate: TopologyCandidate,
+) -> dict[str, Any]:
+    """Materialize one generated dual-independent-PULL candidate."""
+    name = candidate.candidate_id
+    source = {"x": 6, "y": 3, "z": 0}
+    left_pull = {"x": 5, "y": 3, "z": 0}
+    right_pull = {"x": 7, "y": 3, "z": 0}
+
+    left_arms = [
+        {"x": 4 - i, "y": 3, "z": 0}
+        for i in range(candidate.arm_blocks)
+    ]
+    right_arms = [
+        {"x": 8 + i, "y": 3, "z": 0}
+        for i in range(candidate.arm_blocks)
+    ]
+    left_sink = {"x": 4 - candidate.arm_blocks, "y": 3, "z": 0}
+    right_sink = {"x": 8 + candidate.arm_blocks, "y": 3, "z": 0}
+
+    await connection.send(protocol.chat(
+        f"[yan-agent] CANDIDATE {name}: family={candidate.family} source={candidate.source} "
+        f"armBlocks={candidate.arm_blocks} estimatedBlocks={candidate.estimated_blocks}"
+    ))
+    await connection.send(protocol.chat(f"[yan-agent] {name}: {candidate.description}"))
+
+    placements: list[tuple[str, dict[str, int], str]] = [
+        ("source", source, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
+        ("left-pull", left_pull, "mekanism:basic_logistical_transporter"),
+        ("right-pull", right_pull, "mekanism:basic_logistical_transporter"),
+    ]
+    placements.extend(
+        (f"left-arm-{i + 1}", pos, "mekanism:basic_logistical_transporter")
+        for i, pos in enumerate(left_arms)
+    )
+    placements.extend(
+        (f"right-arm-{i + 1}", pos, "mekanism:basic_logistical_transporter")
+        for i, pos in enumerate(right_arms)
+    )
+    placements.extend(
+        [
+            ("left-sink", left_sink, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
+            ("right-sink", right_sink, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
+        ]
+    )
+
+    for label, pos, block_id in placements:
+        await _action(connection, f"{name}-place-{label}", "place_block", {**pos, "block": block_id})
+
+    await _action(connection, f"{name}-settle", "wait_ticks", {"ticks": 15}, timeout=5.0)
+
+    left_cfg = await _action(
+        connection,
+        f"{name}-left-mode",
+        "mek_set_transporter_mode",
+        {**left_pull, "side": "east", "mode": "PULL"},
+    )
+    right_cfg = await _action(
+        connection,
+        f"{name}-right-mode",
+        "mek_set_transporter_mode",
+        {**right_pull, "side": "west", "mode": "PULL"},
+    )
+    await connection.send(protocol.chat(
+        f"[yan-agent] {name}: CONFIG left={left_cfg.get('after')} right={right_cfg.get('after')}"
+    ))
+
+    seeded = await _action(
+        connection,
+        f"{name}-seed",
+        "seed_item",
+        {**source, "item": "minecraft:raw_iron", "count": 6},
+    )
+    await connection.send(protocol.chat(
+        f"[yan-agent] {name}: seeded={seeded.get('inserted')}/6; benchmarking live flow..."
+    ))
+
+    await _action(connection, f"{name}-wait", "wait_ticks", {"ticks": 200}, timeout=18.0)
+
+    return {
+        "source": await _action(connection, f"{name}-source", "read_inventory", source),
+        "left": await _action(connection, f"{name}-left", "read_inventory", left_sink),
+        "right": await _action(connection, f"{name}-right", "read_inventory", right_sink),
+        "drain_positions": [("source", source), ("left", left_sink), ("right", right_sink)],
+        "topology": candidate.family,
+        "candidate": candidate.as_dict(),
+        "actual_blocks": len(placements),
+    }
+
+
+async def _build_generated_candidate(
+    connection: ServerConnection,
+    candidate: TopologyCandidate,
+) -> dict[str, Any]:
+    if candidate.family == "shared_t":
+        observed = await _build_splitter_variant_a(connection, candidate.candidate_id)
+        observed["candidate"] = candidate.as_dict()
+        observed["actual_blocks"] = 7
+        return observed
+    if candidate.family == "dual_independent_pull":
+        return await _build_generated_dual_pull_candidate(connection, candidate)
+    raise RuntimeError(f"unsupported generated topology family: {candidate.family}")
+
+
+def _score_topology_result(
+    *,
+    source_n: int,
+    left_n: int,
+    right_n: int,
+    block_count: int,
+) -> tuple[bool, int, int]:
+    """Hard correctness first, then balance, then compactness."""
+    total = source_n + left_n + right_n
+    conserved = total == 6
+    both_live = left_n > 0 and right_n > 0
+    passed = conserved and source_n == 0 and both_live
+    imbalance = abs(left_n - right_n)
+    if not passed:
+        # Keep failed candidates far below every valid candidate.
+        return False, -1000 - imbalance - block_count, imbalance
+    # Fairness is much more important than saving a block; compactness breaks ties.
+    score = 1000 - imbalance * 100 - block_count
+    return True, score, imbalance
+
+
+async def _run_topology_search_session(connection: ServerConnection) -> None:
+    """v0.8: generate candidates from memory, benchmark all, select the best, save v2 skill."""
+    await connection.send(protocol.hello("yan-topology-search-v0.8"))
+
+    candidates, source_skill = generate_two_branch_candidates()
+    memory_status = "loaded" if source_skill is not None else "missing"
+    await connection.send(protocol.chat(
+        f"[yan-agent] v0.8 MEMORY: mekanism_two_branch_distribution_v1={memory_status}; "
+        f"generatedCandidates={len(candidates)}"
+    ))
+    await connection.send(protocol.chat(
+        "[yan-agent] v0.8 objective: benchmark ALL generated candidates; "
+        "correctness > balance > compactness. Do not stop at first PASS."
+    ))
+
+    for candidate in candidates:
+        await connection.send(protocol.chat(
+            f"[yan-agent] GENERATED {candidate.candidate_id}: family={candidate.family} "
+            f"source={candidate.source} armBlocks={candidate.arm_blocks} "
+            f"estimatedBlocks={candidate.estimated_blocks}"
+        ))
+
+    # Union footprint for all generated candidates.
+    footprint = [
+        *({"x": x, "y": 3, "z": 0} for x in range(2, 11)),
+        {"x": 6, "y": 2, "z": 0},
+        *({"x": x, "y": 1, "z": 0} for x in range(4, 9)),
+    ]
+
+    history: list[dict[str, Any]] = []
+    try:
+        initial = await _action(
+            connection,
+            "search-footprint",
+            "inspect_blocks",
+            {"positions": footprint},
+        )
+        occupied = [b for b in (initial.get("blocks") or []) if not b.get("is_air", False)]
+        if occupied:
+            raise RuntimeError(f"topology-search footprint is not empty: {occupied}")
+
+        for index, candidate in enumerate(candidates, start=1):
+            await connection.send(protocol.chat(
+                f"[yan-agent] BENCHMARK {index}/{len(candidates)} {candidate.candidate_id}"
+            ))
+            observed = await _build_generated_candidate(connection, candidate)
+
+            source_n = int(observed["source"].get("total_items") or 0)
+            left_n = int(observed["left"].get("total_items") or 0)
+            right_n = int(observed["right"].get("total_items") or 0)
+            total = source_n + left_n + right_n
+            conserved = total == 6
+            block_count = int(observed.get("actual_blocks") or candidate.estimated_blocks)
+            passed, score, imbalance = _score_topology_result(
+                source_n=source_n,
+                left_n=left_n,
+                right_n=right_n,
+                block_count=block_count,
+            )
+
+            row = {
+                **candidate.as_dict(),
+                "source_items": source_n,
+                "left_items": left_n,
+                "right_items": right_n,
+                "total": total,
+                "conserved": conserved,
+                "both_live": left_n > 0 and right_n > 0,
+                "imbalance": imbalance,
+                "actual_blocks": block_count,
+                "score": score,
+                "passed": passed,
+            }
+            history.append(row)
+            await connection.send(protocol.chat(
+                f"[yan-agent] RESULT {candidate.candidate_id}: source={source_n} left={left_n} "
+                f"right={right_n} conserved={conserved} blocks={block_count} "
+                f"imbalance={imbalance} score={score} pass={passed}"
+            ))
+
+            await _cleanup_splitter_variant(
+                connection,
+                name=candidate.candidate_id,
+                drain_positions=observed["drain_positions"],
+            )
+
+        passing = [row for row in history if row["passed"]]
+        if not passing:
+            raise RuntimeError(f"all generated topology candidates failed: {history}")
+
+        best = max(passing, key=lambda row: row["score"])
+        await connection.send(protocol.chat(
+            f"[yan-agent] SELECT BEST {best['candidate_id']}: score={best['score']} "
+            f"left={best['left_items']} right={best['right_items']} "
+            f"blocks={best['actual_blocks']} source={best['source']}"
+        ))
+
+        skill_path = save_skill(
+            "mekanism_two_branch_distribution_v2",
+            description=(
+                "Best live-benchmarked two-branch Mekanism distribution topology selected "
+                "from generated candidates using correctness, balance and compactness."
+            ),
+            implementation={
+                "family": best["family"],
+                "arm_blocks": best["arm_blocks"],
+                "actual_blocks": best["actual_blocks"],
+                "source_mode": "PULL",
+                "selection_policy": "correctness > balance > compactness",
+                "candidate_id": best["candidate_id"],
+            },
+            verification={
+                "source": best["source_items"],
+                "left": best["left_items"],
+                "right": best["right_items"],
+                "conserved": best["conserved"],
+                "imbalance": best["imbalance"],
+                "score": best["score"],
+                "candidate_count": len(history),
+                "all_results": history,
+            },
+            source_experiment="yan-topology-search-v0.8",
+        )
+        await connection.send(protocol.chat(
+            f"[yan-agent] MEMORY: saved optimized skill {skill_path.name}; knownSkills={list_skills()}"
+        ))
+
+    except (RuntimeError, KeyError, TypeError, ValueError) as exc:
+        try:
+            await _action(connection, "search-emergency-rollback", "rollback_session", {})
+        except RuntimeError:
+            pass
+        await connection.send(protocol.error(f"topology search v0.8 FAIL: {exc}"))
+        return
+
+    await connection.send(protocol.finish(
+        "topology search v0.8 PASS: "
+        f"generated={len(candidates)} benchmarked={len(history)} "
+        f"best={best['candidate_id']} family={best['family']} armBlocks={best['arm_blocks']} "
+        f"left={best['left_items']} right={best['right_items']} "
+        f"blocks={best['actual_blocks']} score={best['score']} "
+        "skill=mekanism_two_branch_distribution_v2 worldClean=true"
     ))
 
 
