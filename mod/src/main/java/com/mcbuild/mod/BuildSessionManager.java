@@ -20,7 +20,10 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -173,6 +176,7 @@ public final class BuildSessionManager {
                         case "seed_item" -> seedItem(request);
                         case "drain_inventory" -> drainInventory(request);
                         case "place_block" -> placeBlock(request);
+                        case "place_mekanism_filled_energy_cube" -> placeMekanismFilledEnergyCube(request);
                         case "remove_block" -> removeBlock(request);
                         case "rollback_session" -> rollbackSession();
                         case "mek_get_transporter_mode" -> mekGetTransporterMode(request);
@@ -919,6 +923,86 @@ public final class BuildSessionManager {
             result.addProperty("capacity", storage.getMaxEnergyStored());
             result.addProperty("can_extract", storage.canExtract());
             result.addProperty("can_receive", storage.canReceive());
+            return result;
+        }
+
+        private JsonObject placeMekanismFilledEnergyCube(ProtocolMessages.Action request) throws Exception {
+            BlockPos pos = resolveRelativePos(request.args);
+            BlockState before = level.getBlockState(pos);
+            if (!before.isAir()) {
+                throw new IllegalStateException(
+                        "Refusing to overwrite non-air block at " + pos.toShortString() + ": "
+                                + BuiltInRegistries.BLOCK.getKey(before.getBlock()));
+            }
+
+            // Build exactly the charged Creative Energy Cube variant exposed by Mekanism's creative tab:
+            // StorageUtils.getFilledEnergyVariant(ItemBlockEnergyCube.withCreativeSideConfig(ALL_OUTPUT))
+            Class<?> itemBlockEnergyCube = Class.forName("mekanism.common.item.block.ItemBlockEnergyCube");
+            Object allOutput = itemBlockEnergyCube.getField("ALL_OUTPUT").get(null);
+
+            java.lang.reflect.Method withCreativeSideConfig = null;
+            for (java.lang.reflect.Method method : itemBlockEnergyCube.getMethods()) {
+                if ("withCreativeSideConfig".equals(method.getName()) && method.getParameterCount() == 1) {
+                    withCreativeSideConfig = method;
+                    break;
+                }
+            }
+            if (withCreativeSideConfig == null) {
+                throw new IllegalStateException("Could not resolve ItemBlockEnergyCube.withCreativeSideConfig");
+            }
+
+            ItemStack configured = (ItemStack) withCreativeSideConfig.invoke(null, allOutput);
+            Class<?> storageUtils = Class.forName("mekanism.common.util.StorageUtils");
+            ItemStack filled = (ItemStack) storageUtils
+                    .getMethod("getFilledEnergyVariant", ItemStack.class)
+                    .invoke(null, configured);
+
+            ItemStack previousHand = player.getItemInHand(InteractionHand.MAIN_HAND).copy();
+            try {
+                player.setItemInHand(InteractionHand.MAIN_HAND, filled.copy());
+                BlockHitResult hit = new BlockHitResult(
+                        Vec3.atCenterOf(pos),
+                        Direction.UP,
+                        pos,
+                        false);
+                UseOnContext context = new UseOnContext(player, InteractionHand.MAIN_HAND, hit);
+                InteractionResult placed = player.getItemInHand(InteractionHand.MAIN_HAND).useOn(context);
+                if (!placed.consumesAction() || level.getBlockState(pos).isAir()) {
+                    throw new IllegalStateException(
+                            "Charged Creative Energy Cube item placement failed at " + pos.toShortString()
+                                    + " result=" + placed);
+                }
+            } finally {
+                player.setItemInHand(InteractionHand.MAIN_HAND, previousHand);
+            }
+
+            BlockState after = level.getBlockState(pos);
+            ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(after.getBlock());
+            if (!"mekanism:creative_energy_cube".equals(blockId.toString())) {
+                throw new IllegalStateException(
+                        "Expected mekanism:creative_energy_cube after item placement, got " + blockId);
+            }
+            agentPlaced.add(pos.immutable());
+
+            BlockEntity be = level.getBlockEntity(pos);
+            long internalEnergy = -1;
+            if (be != null) {
+                try {
+                    Object container = be.getClass().getMethod("getEnergyContainer").invoke(be);
+                    internalEnergy = ((Number) container.getClass().getMethod("getEnergy").invoke(container)).longValue();
+                } catch (ReflectiveOperationException ignored) {
+                }
+            }
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("placed", blockId.toString());
+            result.addProperty("variant", "mekanism_creative_tab_filled_all_output");
+            result.addProperty("internal_energy", internalEnergy);
+            result.addProperty("tracked_for_rollback", true);
+            if (internalEnergy <= 0) {
+                throw new IllegalStateException(
+                        "Filled Creative Energy Cube placed but internal energy is not positive: " + internalEnergy);
+            }
             return result;
         }
 
