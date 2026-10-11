@@ -16,6 +16,7 @@ from mcbuild.server import protocol
 from mcbuild.server.environment_planner import BranchRoute, RoutePlan, generate_route_plans, replan_failed_branch
 from mcbuild.server.project_session import run_project_session
 from mcbuild.server.mission_session import run_mission_session
+from mcbuild.server.mission_v21 import run_powered_mission_session
 from mcbuild.server.run_logger import LoggedConnection, RunRecorder
 from mcbuild.server.session import run_build_session
 from mcbuild.server.skill_store import list_skills, load_skill, save_skill
@@ -73,7 +74,7 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
         elif command == "environment":
             await _run_environment_build_session(logged_connection)
         else:
-            await run_mission_session(logged_connection)
+            await run_powered_mission_session(logged_connection)
     except Exception as exc:
         recorder.fail_from_exception(exc)
         try:
