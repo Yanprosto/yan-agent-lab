@@ -35,7 +35,9 @@ public class WsClient extends WebSocketClient {
     public void onOpen(ServerHandshake handshake) {
         JsonObject request = new JsonObject();
         request.addProperty("cmd", command);
-        request.addProperty("prompt", prompt);
+        if (prompt != null && !prompt.isBlank()) {
+            request.addProperty("prompt", prompt);
+        }
         send(request.toString());
     }
 
@@ -52,6 +54,7 @@ public class WsClient extends WebSocketClient {
             }
             case "chat" -> session.onChat(GSON.fromJson(message, ProtocolMessages.Chat.class).text);
             case "blocks" -> session.onBlocks(GSON.fromJson(message, ProtocolMessages.Blocks.class));
+            case "action" -> session.onAction(GSON.fromJson(message, ProtocolMessages.Action.class));
             case "finish" -> {
                 session.onFinish(GSON.fromJson(message, ProtocolMessages.Finish.class).summary);
                 close();
@@ -64,6 +67,10 @@ public class WsClient extends WebSocketClient {
                 // unknown message type; ignore rather than crash the session.
             }
         }
+    }
+
+    public void sendObservation(JsonObject observation) {
+        send(GSON.toJson(observation));
     }
 
     @Override

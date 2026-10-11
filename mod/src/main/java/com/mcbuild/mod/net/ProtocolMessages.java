@@ -1,5 +1,6 @@
 package com.mcbuild.mod.net;
 
+import com.google.gson.JsonObject;
 import java.util.List;
 
 /**
@@ -25,6 +26,12 @@ public final class ProtocolMessages {
     public static class Blocks extends Envelope {
         public int iteration;
         public List<BlockChange> changes;
+    }
+
+    public static class Action extends Envelope {
+        public String id;
+        public String action;
+        public JsonObject args;
     }
 
     public static class BlockChange {

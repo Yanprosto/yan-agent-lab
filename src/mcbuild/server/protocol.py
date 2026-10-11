@@ -6,6 +6,7 @@ keep the two in sync when changing shapes here.
     {"type": "hello", "run_dir": str}
     {"type": "chat", "text": str}
     {"type": "blocks", "iteration": int, "changes": [{"x": int, "y": int, "z": int, "block": str|None}]}
+    {"type": "action", "id": str, "action": str, "args": dict}
     {"type": "finish", "summary": str}
     {"type": "error", "reason": str}
 """
@@ -25,6 +26,10 @@ def chat(text: str) -> str:
 
 def blocks(iteration: int, changes: list[dict]) -> str:
     return json.dumps({"type": "blocks", "iteration": iteration, "changes": changes})
+
+
+def action(request_id: str, action_name: str, args: dict | None = None) -> str:
+    return json.dumps({"type": "action", "id": request_id, "action": action_name, "args": args or {}})
 
 
 def finish(summary: str) -> str:

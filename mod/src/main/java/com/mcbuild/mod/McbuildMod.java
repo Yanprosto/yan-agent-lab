@@ -2,6 +2,7 @@ package com.mcbuild.mod;
 
 import com.mcbuild.mod.command.BuildCommand;
 import com.mcbuild.mod.command.ProjectCommand;
+import com.mcbuild.mod.command.YanProbeCommand;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
@@ -18,6 +19,7 @@ public class McbuildMod {
         public static void onRegisterCommands(RegisterCommandsEvent event) {
             BuildCommand.register(event.getDispatcher());
             ProjectCommand.register(event.getDispatcher());
+            YanProbeCommand.register(event.getDispatcher());
         }
     }
 }
