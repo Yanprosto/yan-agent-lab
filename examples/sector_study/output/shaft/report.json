@@ -1,0 +1,208 @@
+{
+  "provenance": "assistant_authored_DSL; no LLM worker run; no live placement",
+  "bounds": [
+    [
+      0,
+      0,
+      0
+    ],
+    [
+      95,
+      60,
+      95
+    ]
+  ],
+  "blocks": 66610,
+  "connectivity": {
+    "method": "full-cube support, two air blocks, cardinal moves, <=1 block ascent/descent; jump-capable, not Minecraft pathfinding",
+    "reachable_positions": 16702,
+    "targets": {
+      "deck_14": {
+        "foot_position": [
+          26,
+          16,
+          19
+        ],
+        "reachable": true,
+        "steps": 35
+      },
+      "deck_30": {
+        "foot_position": [
+          42,
+          32,
+          19
+        ],
+        "reachable": true,
+        "steps": 51
+      },
+      "deck_46": {
+        "foot_position": [
+          58,
+          48,
+          19
+        ],
+        "reachable": true,
+        "steps": 67
+      }
+    }
+  },
+  "merge_reports": [
+    {
+      "accepted": true,
+      "total_voxels": 32422,
+      "core_voxels": 32422,
+      "halo_voxels": 0,
+      "interface_voxels": 0,
+      "clipped_voxels": 0,
+      "forbidden_voxels": 0,
+      "conflict_voxels": 0,
+      "applied_voxels": 32422,
+      "ignored_air_voxels": 0,
+      "affected_bounds": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          95,
+          13,
+          95
+        ]
+      ],
+      "clipped_bounds": null,
+      "forbidden_bounds": null,
+      "accepted_bounds": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          95,
+          13,
+          95
+        ]
+      ],
+      "messages": []
+    },
+    {
+      "accepted": true,
+      "total_voxels": 12762,
+      "core_voxels": 12762,
+      "halo_voxels": 0,
+      "interface_voxels": 0,
+      "clipped_voxels": 0,
+      "forbidden_voxels": 0,
+      "conflict_voxels": 0,
+      "applied_voxels": 12762,
+      "ignored_air_voxels": 0,
+      "affected_bounds": [
+        [
+          8,
+          14,
+          3
+        ],
+        [
+          92,
+          29,
+          86
+        ]
+      ],
+      "clipped_bounds": null,
+      "forbidden_bounds": null,
+      "accepted_bounds": [
+        [
+          8,
+          14,
+          3
+        ],
+        [
+          92,
+          29,
+          86
+        ]
+      ],
+      "messages": []
+    },
+    {
+      "accepted": true,
+      "total_voxels": 12437,
+      "core_voxels": 12437,
+      "halo_voxels": 0,
+      "interface_voxels": 0,
+      "clipped_voxels": 0,
+      "forbidden_voxels": 0,
+      "conflict_voxels": 0,
+      "applied_voxels": 12437,
+      "ignored_air_voxels": 0,
+      "affected_bounds": [
+        [
+          8,
+          30,
+          3
+        ],
+        [
+          92,
+          45,
+          86
+        ]
+      ],
+      "clipped_bounds": null,
+      "forbidden_bounds": null,
+      "accepted_bounds": [
+        [
+          8,
+          30,
+          3
+        ],
+        [
+          92,
+          45,
+          86
+        ]
+      ],
+      "messages": []
+    },
+    {
+      "accepted": true,
+      "total_voxels": 8989,
+      "core_voxels": 8989,
+      "halo_voxels": 0,
+      "interface_voxels": 0,
+      "clipped_voxels": 0,
+      "forbidden_voxels": 0,
+      "conflict_voxels": 0,
+      "applied_voxels": 8989,
+      "ignored_air_voxels": 0,
+      "affected_bounds": [
+        [
+          9,
+          46,
+          3
+        ],
+        [
+          91,
+          60,
+          86
+        ]
+      ],
+      "clipped_bounds": null,
+      "forbidden_bounds": null,
+      "accepted_bounds": [
+        [
+          9,
+          46,
+          3
+        ],
+        [
+          91,
+          60,
+          86
+        ]
+      ],
+      "messages": []
+    }
+  ],
+  "compile_validate_seconds": 1.516
+}
