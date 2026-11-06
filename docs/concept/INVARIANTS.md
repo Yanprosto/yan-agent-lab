@@ -93,3 +93,10 @@ A plant is broken and exported only after it passed its contract in working form
 
 **I17. Every damage set is repairable and has a payoff.** [ARCHITECTURE §9]
 *Check:* the generator stores a repair plan and the restored contract for each break.
+
+**I18. Rebuilding never touches the stable world.** [GAMEPLAY §1b]
+World rebuilding happens only inside anomaly zones. The stable world stays connected
+(possibly by a longer detour) after every rebuild, and player-built routes outside
+anomaly zones are never cut by it.
+*Check:* after each generated rebuild, a connectivity test over the stable-zone graph
+passes and no player-owned block outside the anomaly zones has changed.

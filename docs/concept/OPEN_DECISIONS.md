@@ -53,11 +53,11 @@ The player's day is split between far expeditions and settling "near the telepor
 Is it a fixed home point, a network between restored nodes, the spawn? What limits it?
 What happens to a player far from it on day 7? (GAMEPLAY §9)
 
-## D12. What resets between cycles
+## D12. Details of what is lost
 
-Roguelite hub + per-cycle loadout requires deciding what persists: world and restored
-infrastructure, personal inventory, base/settlement (hub or world), unextracted loot,
-death mid-cycle. (GAMEPLAY §1a)
+Decided: world, infrastructure and settlement persist; unextracted inventory is lost.
+Open: what counts as "extracted", death mid-cycle, whether the settlement near the
+teleport is safe from day-7 events. (GAMEPLAY §1a)
 
 ## D13. Cycle length, sleep, offline time
 
@@ -88,4 +88,12 @@ Wood, food, ores when the whole world is megastructure; which BMC5 parts remain.
   the October "build a civilization in every sector" reading. (GAMEPLAY §1)
 - **2026-11-06 — Roguelite hub.** A hub location where the player picks perks and
   equipment before each seven-day cycle; a cycle is a run. (GAMEPLAY §1a)
+- **2026-11-06 — Persistence (option a).** World, restored infrastructure, supply
+  networks and settlement persist; inventory not extracted to the hub is lost.
+  (GAMEPLAY §1a)
+- **2026-11-06 — Settlement location.** The player's MCA settlement is in the world,
+  near the teleport. (GAMEPLAY §1a)
+- **2026-11-06 — Anomaly zones.** World rebuilding happens only in dedicated anomaly
+  zones of hundreds of chunks; the rest of the world is stable, so supply routes are
+  never cut. Invariant I18. (GAMEPLAY §1b)
 
