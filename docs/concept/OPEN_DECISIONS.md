@@ -53,6 +53,17 @@ The player's day is split between far expeditions and settling "near the telepor
 Is it a fixed home point, a network between restored nodes, the spawn? What limits it?
 What happens to a player far from it on day 7? (GAMEPLAY §9)
 
+## D12. What resets between cycles
+
+Roguelite hub + per-cycle loadout requires deciding what persists: world and restored
+infrastructure, personal inventory, base/settlement (hub or world), unextracted loot,
+death mid-cycle. (GAMEPLAY §1a)
+
+## D13. Cycle length, sleep, offline time
+
+7 Minecraft days ≈ 2h20m real time; sleep shortens it; does the clock run while the
+player is away? (GAMEPLAY §1b)
+
 ## D11. Biome resources in a world without an overworld
 
 Wood, food, ores when the whole world is megastructure; which BMC5 parts remain.
@@ -75,4 +86,6 @@ Wood, food, ores when the whole world is megastructure; which BMC5 parts remain.
 - **2026-11-06 — Restoration goal.** The player decides; the seven-day cycle limits
   time, so the daily choice is far expedition vs settling near the teleport. Supersedes
   the October "build a civilization in every sector" reading. (GAMEPLAY §1)
+- **2026-11-06 — Roguelite hub.** A hub location where the player picks perks and
+  equipment before each seven-day cycle; a cycle is a run. (GAMEPLAY §1a)
 
