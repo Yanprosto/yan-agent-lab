@@ -1,5 +1,16 @@
 # mcbuild Multi-Agent
 
+## Minecraft YAN: three connected scopes
+
+The repository implements the **YAN Agent Lab** builder/engineer, but it is not a complete distributable Minecraft modpack. For the wider project and the October 2026 decisions, start with:
+
+- [Minecraft project index: modpack ↔ world ↔ agent](docs/MINECRAFT_PROJECT_INDEX.md)
+- [YAN Modpack: pinned mods, installer and world migration](docs/MODPACK_SPEC.md)
+- [YAN World / The City: megastructure and gameplay direction](docs/WORLD_DESIGN.md)
+- [YAN Agent Lab: autonomous engineering north star](docs/YAN_PROJECT_CONCEPT.md)
+
+These documents distinguish verified implementation, user decisions recalled from conversations, proposals and open questions. Draft PR experiments are **not** merged capabilities.
+
 ## YAN: project context and completed audit
 
 - [Project concept and long-term goal](docs/YAN_PROJECT_CONCEPT.md)
