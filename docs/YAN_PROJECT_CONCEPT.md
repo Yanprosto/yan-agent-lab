@@ -806,6 +806,9 @@ everything in empty air.
 
 ## 22. Long-term civilization loop
 
+> **2026-11-06:** the generator creates no populated districts; settlement is the
+> player's own (MCA). See `concept/WORLD.md` §3 and `concept/GAMEPLAY.md` §3.
+
 The industrial system should feed a larger civilization loop:
 
 ~~~text
@@ -836,6 +839,9 @@ visibly more civilized.
 ---
 
 ## 23. NPCs and settlement direction
+
+> **2026-11-06:** NPCs run on a reskinned Touhou Little Maid engine; MCA only in the
+> player's settlement. See `concept/WORLD.md` §3.
 
 NPC systems should eventually interact with infrastructure.
 

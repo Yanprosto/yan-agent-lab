@@ -14,7 +14,7 @@ Alternative: the LLM is the planner itself and search is a tool it calls.
 Stay Mekanism-only until M3 is done, or add a second tech mod (e.g. Create) earlier to
 force the capability layer to be truly mod-agnostic?
 
-## D3. Priority between the two lines
+## D3. Priority between the two lines (industrial vs environment)
 
 Both lines are one product (vision §0): industrial = functional content, environment =
 how it looks when aged and broken. Open: what order and share of effort until M4.
@@ -47,9 +47,16 @@ Options: (a) pre-generated map / sector saves; (b) library of verified modules t
 worldgen mod assembles at chunk generation (jigsaw-like); (c) hybrid: pregenerated
 large sectors + module-based fill. The LLM agent cannot run during chunk generation.
 
-## D9. Helper mode carrier
+## D10. What the teleport is
 
-Which NPC system carries the runtime helper (maid mod, custom NPC, other), and when.
+The player's day is split between far expeditions and settling "near the teleport".
+Is it a fixed home point, a network between restored nodes, the spawn? What limits it?
+What happens to a player far from it on day 7? (GAMEPLAY §9)
+
+## D11. Biome resources in a world without an overworld
+
+Wood, food, ores when the whole world is megastructure; which BMC5 parts remain.
+(WORLD §6)
 
 ---
 
@@ -58,4 +65,14 @@ Which NPC system carries the runtime helper (maid mod, custom NPC, other), and w
 - **2026-11-06 — Product model.** The agent is part of the world generator: it
   designs working factories, which are then broken for the player to restore or
   scavenge. A runtime helper (e.g. maids) is a secondary, later mode. (vision §0)
+- **2026-11-06 — The City is the whole world**, not a dimension or a region. (WORLD §1)
+- **2026-11-06 — Tone.** BLAME! is the base (emptiness, scale, indifferent machines);
+  giga-khrushchevka = aesthetics of past life (archaeology, not population); liminal
+  spaces as a light accent. The generator creates no populated districts. (WORLD §2–3)
+- **2026-11-06 — NPC engine.** Touhou Little Maid, reskinned and trimmed, is the engine
+  for companions, hostile NPCs and rare loners. Closes former D9. (WORLD §3)
+- **2026-11-06 — MCA Reborn** only for the player's own settlement. (WORLD §3)
+- **2026-11-06 — Restoration goal.** The player decides; the seven-day cycle limits
+  time, so the daily choice is far expedition vs settling near the teleport. Supersedes
+  the October "build a civilization in every sector" reading. (GAMEPLAY §1)
 
