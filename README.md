@@ -7,6 +7,7 @@ The repository implements the **YAN Agent Lab** builder/engineer, but it is not 
 - [Minecraft project index: modpack ↔ world ↔ agent](docs/MINECRAFT_PROJECT_INDEX.md)
 - [YAN Modpack: pinned mods, installer and world migration](docs/MODPACK_SPEC.md)
 - [YAN World / The City: megastructure and gameplay direction](docs/WORLD_DESIGN.md)
+- [Gameplay systems: seven-day world cycle, Cargo Relay, physics and factions](docs/GAMEPLAY_SYSTEMS.md)
 - [YAN Agent Lab: autonomous engineering north star](docs/YAN_PROJECT_CONCEPT.md)
 
 These documents distinguish verified implementation, user decisions recalled from conversations, proposals and open questions. Draft PR experiments are **not** merged capabilities.
