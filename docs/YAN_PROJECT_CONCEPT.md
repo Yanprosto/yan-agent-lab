@@ -6,6 +6,10 @@
 >
 > If a future implementation choice conflicts with this document, prefer this concept
 > unless there is a deliberate, documented decision to change it.
+>
+> This file is the **vision**. Hard rules, architecture, current state and open
+> questions live in [`concept/`](concept/README.md); on conflict,
+> `concept/INVARIANTS.md` takes precedence over this text.
 
 ---
 

@@ -2,7 +2,9 @@
 
 Before changing factory planning, simulation, mod reconnaissance or generator scope:
 
-1. Read `docs/YAN_PROJECT_CONCEPT.md` for the intended goal and design principles.
+1. Read `docs/concept/INVARIANTS.md` (hard rules) and `docs/concept/ROADMAP.md`
+   (verified state, active milestone); then `docs/concept/ARCHITECTURE.md` for the
+   layer you touch, and `docs/YAN_PROJECT_CONCEPT.md` for the long-term vision.
 2. Read `docs/recon/MEKANISM_AUDIT.md` and `docs/recon/mekanism/oracle_defaults.json`.
 3. Consult archived source evidence for the specific mechanism before requesting another scan.
 
