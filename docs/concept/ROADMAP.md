@@ -90,8 +90,17 @@ event simulator built from L2 facts.
 - T1 predictions vs live observations are logged and discrepancies recorded;
 - no goal-specific Python function was written.
 
+### M4 — Verified modules + first broken plant
+
+Turn M3 results into parameterised modules (ARCHITECTURE §5), compose a small plant
+from at least two of them, then generate a damage set (§9) for it.
+*Done when:* a generated plant was verified working, broken in 3+ places, and a
+player (or the engine in helper mode, as a test) restores it to the same contract
+using only the planned repair items.
+
 ### Later (order not fixed)
 
-Shared infrastructure between lines → existing-world reuse → workshop planning →
-district planning → sector restoration (vision §21). Each gets done-criteria when it
+Shared infrastructure between lines → workshop / district composition → integration
+with the in-game world generator (D8) → sector-scale aging and damage → runtime helper
+mode via NPCs (vision §0, §21). Each gets done-criteria when it
 becomes active.

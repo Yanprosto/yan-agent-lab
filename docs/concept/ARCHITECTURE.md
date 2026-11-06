@@ -5,6 +5,26 @@ intermediate representation the planner searches over, the evaluation tiers, the
 skill format and the role of the LLM. Items marked **[proposed]** are not yet decided;
 see `OPEN_DECISIONS.md`.
 
+## 0. Generation pipeline
+
+The primary use of the engine is world generation (vision §0):
+
+~~~text
+1 DESIGN    goal/brief → Plan IR → candidates → best layout          (L3–L5)
+2 VERIFY    build in a lab world, run, check contract and accounting (L0, L5, L6)
+3 MODULE    save as parameterised, verified module = skill           (L7)
+4 COMPOSE   assemble modules into plants / districts / sectors        (L4, orchestrator)
+5 BREAK     choose damage with knowledge of the IR (see §9)
+6 AGE       visual decay, debris, palette (environment line)
+7 EXPORT    schematics / structure pieces for the in-game generator
+~~~
+
+Steps 1–3 are slow and run offline. Steps 4–7 should become fast enough to run per
+sector. How step 7 meets Minecraft world generation is decision D8.
+
+The runtime helper mode (player commands an NPC helper) reuses L0–L7 on the live
+world with the player's permissions; it is secondary and comes later.
+
 ## 1. Layers
 
 ~~~text
@@ -120,3 +140,31 @@ LLM proposes   deterministic code disposes
 | L6 | experiment loop from v0.4–v0.9 in `server/ws_server.py` (to be extracted) |
 | L7 | `server/skill_store.py` (snapshots today, needs §5 format) |
 | geometry | `dsl/`, `agent/` (architectural shell, not machinery logic) |
+
+## 9. Damage model
+
+Breaking is generated from the verified IR, not applied at random.
+
+~~~text
+Damage = target (IR node/edge) + kind + what it disables + what repairs it + loot left
+~~~
+
+Kinds (initial): missing component (looted), severed cable/transporter, unpowered
+backbone, wrong side/transmitter config, collapsed or blocked route, hostile/contaminated
+zone.
+
+Rules:
+
+- Every damage set must stay **repairable**: the engine can produce a repair plan
+  using only items obtainable by the player at the intended stage.
+- Each repair has a **payoff** the engine can name (line N produces again, door opens,
+  route reconnects).
+- Difficulty is controlled by count, depth (backbone vs leaf) and the rarity of the
+  repair items.
+- Loot left in buffers follows the accounting of the working state (I3).
+
+## 10. Performance in the world
+
+Broken systems do not tick. Only restored parts run; generated plants must not be
+placed as kilometres of live machines. Tick-budget rules (I7) apply to placement at
+generation time as well as to runtime edits.

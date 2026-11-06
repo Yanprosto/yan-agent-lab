@@ -29,7 +29,8 @@ Only `runtime observed` facts may be called verified.
 ## Safety and the world
 
 **I5. Ownership is explicit.** [§26]
-The agent may freely modify and roll back only blocks it placed in the current
+In its lab/generation world the engine owns what it builds. In any shared or player
+world it may freely modify and roll back only blocks it placed in the current
 mission. Anything else is *preserve* unless a permission policy grants more.
 *Check:* the bridge refuses removal/overwrite of non-owned blocks without a grant.
 
@@ -83,3 +84,12 @@ per experiment is a temporary exception and must be listed as debt in `ROADMAP.m
 **I15. `main` is last known green; claims follow `main`.** [§30]
 A capability counts as "proven" in `ROADMAP.md` only when its code is on `main` and a
 run log on that code passed. Work in branches is "demonstrated in branch X", not proven.
+
+## Generation
+
+**I16. Only verified designs get broken.** [vision §0]
+A plant is broken and exported only after it passed its contract in working form.
+*Check:* the exported sector references the verification run of each module/plant.
+
+**I17. Every damage set is repairable and has a payoff.** [ARCHITECTURE §9]
+*Check:* the generator stores a repair plan and the restored contract for each break.
