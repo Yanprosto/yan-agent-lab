@@ -1,5 +1,9 @@
 # YAN Agent Lab: durable project context
 
+## Minecraft project scope recovery
+
+Read [docs/MINECRAFT_PROJECT_INDEX.md](docs/MINECRAFT_PROJECT_INDEX.md) first when a task crosses modpack, world generation or agent behavior. Read [docs/MODPACK_SPEC.md](docs/MODPACK_SPEC.md) before changing mod selection, installer/lock or world migration; read [docs/WORLD_DESIGN.md](docs/WORLD_DESIGN.md) before changing The City generation or gameplay. This repository does not itself guarantee a complete installable BMC5 modpack. Keep historical user decisions, proposals, PR experiments and live-verified behavior distinct; do not infer the current installed JAR list from old conversations.
+
 Before changing factory planning, simulation, mod reconnaissance or generator scope:
 
 1. Read `docs/YAN_PROJECT_CONCEPT.md` for the intended goal and design principles.
