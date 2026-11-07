@@ -80,6 +80,10 @@ public final class BuildSessionManager {
         return start("mission", "", anchor, level, player);
     }
 
+    public static synchronized boolean startPlan(String spec, BlockPos anchor, ServerLevel level, ServerPlayer player) {
+        return start("plan", spec, anchor, level, player);
+    }
+
     public static synchronized boolean startMachineProbe(
             String spec, BlockPos anchor, ServerLevel level, ServerPlayer player) {
         return start("machine", spec, anchor, level, player);
@@ -140,7 +144,7 @@ public final class BuildSessionManager {
             this.chatPrefix = switch (command) {
                 case "project" -> "[mcbuild-project]";
                 case "probe", "functional", "experiment", "mekanism", "splitter", "environment", "mission", "industry",
-                        "machine" -> "[yan-agent]";
+                        "machine", "plan" -> "[yan-agent]";
                 default -> "[mcbuild]";
             };
         }

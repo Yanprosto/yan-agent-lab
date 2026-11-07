@@ -25,6 +25,10 @@ public final class YanLabCommand {
         dispatcher.register(
                 Commands.literal("yanlab")
                         .requires(source -> source.hasPermission(2))
+                        .then(Commands.literal("plan")
+                                .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                        .then(Commands.argument("spec", StringArgumentType.greedyString())
+                                                .executes(YanLabCommand::runPlan))))
                         .then(Commands.literal("machine")
                                 .then(Commands.argument("pos", BlockPosArgument.blockPos())
                                         .then(Commands.argument("spec", StringArgumentType.greedyString())
@@ -74,6 +78,19 @@ public final class YanLabCommand {
         source.sendSuccess(
                 () -> Component.literal("[yan-lab] " + experiment + " started at " + anchor.toShortString()),
                 true);
+        return 1;
+    }
+
+    private static int runPlan(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        CommandSourceStack source = ctx.getSource();
+        BlockPos anchor = BlockPosArgument.getLoadedBlockPos(ctx, "pos");
+        String spec = StringArgumentType.getString(ctx, "spec");
+        if (!BuildSessionManager.startPlan(spec, anchor, source.getLevel(), null)) {
+            source.sendFailure(Component.literal("[yan-lab] another mcbuild/YAN task is already in progress"));
+            return 0;
+        }
+        source.sendSuccess(
+                () -> Component.literal("[yan-lab] plan '" + spec + "' started at " + anchor.toShortString()), true);
         return 1;
     }
 
