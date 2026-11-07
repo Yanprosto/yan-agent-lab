@@ -21,7 +21,7 @@ from mcbuild.server.mission_v21 import run_powered_mission_session
 from mcbuild.server.project_session import run_project_session
 from mcbuild.server.run_logger import LoggedConnection, RunRecorder
 from mcbuild.server.session import run_build_session
-from mcbuild.server.skill_store import list_skills, load_skill, save_skill
+from mcbuild.server.skill_store import list_skills, load_latest_skill, save_skill
 from mcbuild.server.spatial_search import SpatialCandidate, generate_spatial_candidates
 from mcbuild.server.topology_search import TopologyCandidate, generate_two_branch_candidates
 
@@ -1953,10 +1953,10 @@ async def _run_environment_build_session(connection: Connection) -> None:
         protocol.chat("[yan-agent] v1.2: scanning existing world with transporter-transit accounting enabled.")
     )
 
-    skill = load_skill("mekanism_two_branch_distribution_v3")
+    skill, _version = load_latest_skill("mekanism_two_branch_distribution", min_version=3)
     if skill is None:
         await connection.send(
-            protocol.error("environment builder v1.0 requires verified skill mekanism_two_branch_distribution_v3")
+            protocol.error("environment builder v1.0 requires verified skill mekanism_two_branch_distribution_v3+")
         )
         return
     implementation = skill.get("implementation") or {}
