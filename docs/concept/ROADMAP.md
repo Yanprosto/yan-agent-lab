@@ -40,7 +40,14 @@ Live runs below were made on the headless lab (`tools/headless_lab/`: NeoForge 2
   hand-written; new work (probe, planner) is data-driven. Port old sessions as needed.
 - **Layout:** `/yanlab plan` still lays a straight line; `/yanlab layout` fits a chain into a scanned volume.
 - **Power:** one creative cube per machine (no shared backbone).
-- **T1 simulation:** absent; the catalog has the numbers it needs.
+- **T1 simulation:** `planner/estimate.py` is a lite event model (transit, pulls, op times); it
+  matches 5 live runs within poll granularity but knows nothing about energy limits or
+  contention beyond what the catalog records.
+- **Continuous flow:** multi-machine stages work in waves (gated intake), so they lose
+  pipelining (24 ingots: 3840 ticks gated against 2776 for a fair pipelined split). A fair
+  continuous split needs the Logistical Sorter in round-robin mode (new block, bridge action,
+  tree/bus geometry).
+- **Parallel limit:** at most 3 machines per stage (free chest faces); 4 fit no tested box.
 - Fallback path of the planner not yet exercised live.
 
 ## Milestones
@@ -84,9 +91,16 @@ Ordered steps:
    lines across chunks connect shops; architecture is generated around the layout.
    *Done when:* two shops tens of blocks apart, one power source, one freight trunk,
    pass together; breaking one backbone segment is diagnosed and repaired locally.
-4. **Parallel machines per stage** inside a shop when the goal needs throughput.
-   *Done when:* a 24-ingot goal with a time limit puts 2–3 machines on the bottleneck
-   stage, every machine participates, accounting exact.
+4. **Parallel machines per stage** inside a shop when the goal needs throughput. ✓ 2026-11-07:
+   24 ingots from raw iron, limit 4000 ticks → the T1-lite model picks 1 enrichment chamber +
+   3 smelters (bottleneck found from catalog op times); PASS 24/24, smelters busy 26/26/27
+   polls, 3840 ticks against 3780 estimated (run 20261107T151311Z_district_06aa4765). Model vs
+   live over four machine mixes: 5888/5880, 4540/4560, 3780/3840, 3220/3300 (ticks, polls of 60).
+   A district with generated backbone damage and 3 smelters (all dark) was diagnosed and
+   repaired with one cable cell, PASS 24/24 (run 20261107T151503Z_district_2b0d6d2e).
+   *Found on the way:* independent pullers on a chest that fills item by item are
+   winner-takes-all (busy polls 21/76/4/0, 5700 ticks); the intake of a multi-machine stage is
+   now gated until the whole batch is in its chest (catalog fact `independent_pull_split`).
 
 ### M4 — Verified modules + first broken plant
 
