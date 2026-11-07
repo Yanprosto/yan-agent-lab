@@ -69,12 +69,19 @@ player is away? (GAMEPLAY §1b)
 Wood, food, ores when the whole world is megastructure; which BMC5 parts remain.
 (WORLD §6)
 
-## D14. World height and where the ground is
+## D14. Where the ground is (height is decided)
 
-Dynamic Height gives block range −128 … 32751 at most (depth cannot grow below −128, only
-height). Choose: 4096 (−128 … 3967, datapack-level safe) or up to ~32,880; where the player starts
-(a middle level, so "deeper" = down to −128 and "higher" = up); whether the bottom is a hard floor.
-(WORLD §3c)
+Height decided 2026-11-07: **4096 blocks, Y −128 … 3967** (width is practically unlimited, so
+vertical range is a direction, not a record). Open: at which Y the player starts and what "ground"
+means: with the floor fixed at −128, "deeper" has little room, so the start level sits in the
+middle and depth is the tiers below it. (WORLD §3c)
+
+## D17. How narrative locality is applied
+
+Reading (a): everything important right now lies within ~100 blocks of the teleport and the circle
+grows as sectors are restored. Reading (b): the world is a scattering of ~100-block scenes with
+void or road between them. Either way, how does it fit "far runs into the wastes" (GAMEPLAY §1)?
+(WORLD §3d)
 
 ## D15. Client-side check of tall worlds
 
@@ -123,6 +130,10 @@ before the pack is published.
   personal pack; vanilla limits are bypassed with mods and datapacks, not designed around. Each mod
   is checked for version, license and compatibility before adoption (owner's statement).
 - **2026-11-07 — Singleplayer, no Lithium** in the current pack (owner). Closes D6.
+- **2026-11-07 — World height 4096** (Y −128 … 3967); 32k not needed because width is unlimited.
+- **2026-11-07 — Narrative locality** (reference: Peripeteia): despite the vast scale, the story
+  unfolds within about a hundred blocks. The scale is a backdrop to be seen, not a distance to be
+  crossed. (WORLD §3d; reading of the rule is D17)
 - **2026-11-07 — Two generation modes, three scales.** Mode A (world first: fit a
   factory into a given volume; later human workshops) and mode B (factory first:
   process and trunk lines, architecture generated around them; old machine plants,
