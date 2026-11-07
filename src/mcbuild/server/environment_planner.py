@@ -6,11 +6,10 @@ not place blocks itself; it returns relative-coordinate paths for the live actio
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import heapq
+from collections.abc import Iterable
+from dataclasses import dataclass
 from itertools import permutations
-from typing import Iterable
-
 
 Pos = tuple[int, int, int]
 
@@ -90,11 +89,7 @@ def _horizontal_or_up_neighbors(endpoint: Pos) -> list[Pos]:
 
 def _within(pos: Pos, bounds: tuple[Pos, Pos]) -> bool:
     lo, hi = bounds
-    return (
-        lo[0] <= pos[0] <= hi[0]
-        and lo[1] <= pos[1] <= hi[1]
-        and lo[2] <= pos[2] <= hi[2]
-    )
+    return lo[0] <= pos[0] <= hi[0] and lo[1] <= pos[1] <= hi[1] and lo[2] <= pos[2] <= hi[2]
 
 
 def _path_cost(path: list[Pos]) -> int:
@@ -103,7 +98,7 @@ def _path_cost(path: list[Pos]) -> int:
     bends = 0
     vertical = 0
     prev_delta: Pos | None = None
-    for a, b in zip(path, path[1:]):
+    for a, b in zip(path, path[1:], strict=False):
         delta = sub(b, a)
         if delta[1]:
             vertical += 1
@@ -197,11 +192,13 @@ def generate_route_plans(
                     continue
 
                 goals1 = {
-                    p for p in _horizontal_or_up_neighbors(sink_order[0])
+                    p
+                    for p in _horizontal_or_up_neighbors(sink_order[0])
                     if p not in blocked_base and _within(p, bounds)
                 }
                 goals2 = {
-                    p for p in _horizontal_or_up_neighbors(sink_order[1])
+                    p
+                    for p in _horizontal_or_up_neighbors(sink_order[1])
                     if p not in blocked_base and _within(p, bounds)
                 }
                 if not goals1 or not goals2:
@@ -227,12 +224,14 @@ def generate_route_plans(
                             BranchRoute(sink_order[0], tuple(path1), _source_side(source, start1)),
                             BranchRoute(sink_order[1], tuple(path2), _source_side(source, start2)),
                         )
-                        plans.append(RoutePlan(
-                            plan_id=f"naive-{len(plans)+1}",
-                            mode="naive",
-                            branches=branches,
-                            cost=_path_cost(path1) + _path_cost(path2),
-                        ))
+                        plans.append(
+                            RoutePlan(
+                                plan_id=f"naive-{len(plans) + 1}",
+                                mode="naive",
+                                branches=branches,
+                                cost=_path_cost(path1) + _path_cost(path2),
+                            )
+                        )
 
                 # Then generate a skill-informed plan that keeps the two transporter
                 # networks face-disconnected everywhere except through the source chest.
@@ -247,12 +246,14 @@ def generate_route_plans(
                             BranchRoute(sink_order[0], tuple(path1), _source_side(source, start1)),
                             BranchRoute(sink_order[1], tuple(path2_sep), _source_side(source, start2)),
                         )
-                        plans.append(RoutePlan(
-                            plan_id=f"separated-{len(plans)+1}",
-                            mode="separated",
-                            branches=branches,
-                            cost=_path_cost(path1) + _path_cost(path2_sep),
-                        ))
+                        plans.append(
+                            RoutePlan(
+                                plan_id=f"separated-{len(plans) + 1}",
+                                mode="separated",
+                                branches=branches,
+                                cost=_path_cost(path1) + _path_cost(path2_sep),
+                            )
+                        )
 
     # Try one cheap naive plan first, then prefer separated plans by route cost.
     naive = sorted((p for p in plans if p.mode == "naive"), key=lambda p: p.cost)
@@ -274,14 +275,8 @@ def replan_failed_branch(
 
     blocked_base = set(occupied) | {source, sink}
     blocked_base |= _clearance_cells(working_path)
-    starts = [
-        p for p in _horizontal_or_up_neighbors(source)
-        if p not in blocked_base and _within(p, bounds)
-    ]
-    goals = {
-        p for p in _horizontal_or_up_neighbors(sink)
-        if p not in blocked_base and _within(p, bounds)
-    }
+    starts = [p for p in _horizontal_or_up_neighbors(source) if p not in blocked_base and _within(p, bounds)]
+    goals = {p for p in _horizontal_or_up_neighbors(sink) if p not in blocked_base and _within(p, bounds)}
     if not starts or not goals:
         return []
 

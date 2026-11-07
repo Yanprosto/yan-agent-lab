@@ -6,16 +6,15 @@ into a separate Git repository. Publishing failures never change the experiment 
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import uuid
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
-
 
 DEFAULT_REMOTE = "https://github.com/Yanprosto/yan-runtime-logs.git"
 DEFAULT_BRANCH = "main"
@@ -26,7 +25,7 @@ def _project_root() -> Path:
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _safe_slug(value: str) -> str:
@@ -63,7 +62,7 @@ class RunRecorder:
     finished_at_utc: str | None = None
 
     def __post_init__(self) -> None:
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         self.run_id = f"{stamp}_{_safe_slug(self.command)}_{uuid.uuid4().hex[:8]}"
         self.record("RUN_START", command=self.command, prompt=self.prompt)
 

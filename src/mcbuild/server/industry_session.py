@@ -52,9 +52,9 @@ async def _place_power_module(connection, layout: FactoryLayout, prefix: str) ->
     )
     await _place(connection, f"{prefix}-energy-a", layout.energy_a, "mekanism:basic_universal_cable")
     await _place(connection, f"{prefix}-energy-b", layout.energy_b, "mekanism:basic_universal_cable")
-    await connection.send(protocol.chat(
-        f"[yan-agent] {prefix} POWER: precharged cube energy={cube.get('internal_energy')}"
-    ))
+    await connection.send(
+        protocol.chat(f"[yan-agent] {prefix} POWER: precharged cube energy={cube.get('internal_energy')}")
+    )
 
 
 async def _place_transport_path(connection, prefix: str, path) -> None:
@@ -160,15 +160,20 @@ async def _build_stage_cell(
         await _configure_transporter_pull(connection, f"{prefix}-input-pull-a", layout.in_a[0], "south")
         await _configure_transporter_pull(connection, f"{prefix}-input-pull-b", layout.in_b[0], "north")
     else:
-        await connection.send(protocol.chat(
-            f"[yan-agent] STAGE HOLD {stage.id}: input network built but intake remains closed until upstream handoff."
-        ))
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] STAGE HOLD {stage.id}: input network built "
+                "but intake remains closed until upstream handoff."
+            )
+        )
     await _configure_transporter_pull(connection, f"{prefix}-output-pull-a", layout.out_a[0], "west")
     await _configure_transporter_pull(connection, f"{prefix}-output-pull-b", layout.out_b[0], "west")
 
-    await connection.send(protocol.chat(
-        f"[yan-agent] STAGE READY {stage.id}: machines=2 input={stage.input_item} output={stage.output_item}"
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] STAGE READY {stage.id}: machines=2 input={stage.input_item} output={stage.output_item}"
+        )
+    )
 
 
 async def _verify_power(connection, layout: FactoryLayout, prefix: str) -> dict[str, int]:
@@ -193,9 +198,9 @@ async def _verify_power(connection, layout: FactoryLayout, prefix: str) -> dict[
     }
     if result["cube"] <= 0 or result["a"] <= 0 or result["b"] <= 0:
         raise RuntimeError(f"{prefix}: power contract failed {result}")
-    await connection.send(protocol.chat(
-        f"[yan-agent] VERIFY POWER {prefix}: cube={result['cube']} machines={result['a']}/{result['b']}"
-    ))
+    await connection.send(
+        protocol.chat(f"[yan-agent] VERIFY POWER {prefix}: cube={result['cube']} machines={result['a']}/{result['b']}")
+    )
     return result
 
 
@@ -209,9 +214,7 @@ async def _seed_material(connection, pos, item: str, count: int, label: str) -> 
     inserted = int(seeded.get("inserted") or 0)
     if inserted != count:
         raise RuntimeError(f"{label}: inserted {inserted}/{count}")
-    await connection.send(protocol.chat(
-        f"[yan-agent] MATERIAL {label}: {count} x {item}"
-    ))
+    await connection.send(protocol.chat(f"[yan-agent] MATERIAL {label}: {count} x {item}"))
 
 
 async def _wait_stage_output(
@@ -280,10 +283,12 @@ async def _wait_stage_output(
             "transit": transit_count,
         }
         history.append(row)
-        await connection.send(protocol.chat(
-            f"[yan-agent] STAGE {stage.id} {cycle}: sink={output_count}/{stage.output_count} "
-            f"source={source_count} machineIn={in_a}/{in_b} machineOut={out_a}/{out_b} transit={transit_count}"
-        ))
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] STAGE {stage.id} {cycle}: sink={output_count}/{stage.output_count} "
+                f"source={source_count} machineIn={in_a}/{in_b} machineOut={out_a}/{out_b} transit={transit_count}"
+            )
+        )
 
         if (
             output_count == stage.output_count
@@ -318,12 +323,8 @@ async def _inspect_footprint(connection, layouts: list[FactoryLayout]) -> None:
     occupied = [row for row in (observed.get("blocks") or []) if not row.get("is_air", False)]
     if occupied:
         sample = occupied[:5]
-        raise RuntimeError(
-            f"industrial footprint occupied: {len(occupied)} cells; sample={sample}"
-        )
-    await connection.send(protocol.chat(
-        f"[yan-agent] SITE: industrial footprint clear, cells={len(positions)}"
-    ))
+        raise RuntimeError(f"industrial footprint occupied: {len(occupied)} cells; sample={sample}")
+    await connection.send(protocol.chat(f"[yan-agent] SITE: industrial footprint clear, cells={len(positions)}"))
 
 
 async def run_industry_session(goal: str, connection) -> None:
@@ -335,17 +336,14 @@ async def run_industry_session(goal: str, connection) -> None:
         return
 
     await connection.send(protocol.hello("yan-goal-industry-v3.0"))
-    await connection.send(protocol.chat(
-        f"[yan-agent] GOAL: {goal or plan.title}"
-    ))
-    await connection.send(protocol.chat(
-        f"[yan-agent] PLAN {plan.id}: "
-        + " -> ".join(
-            f"{stage.machines}x {stage.machine_block.split(':')[-1]}"
-            for stage in plan.stages
+    await connection.send(protocol.chat(f"[yan-agent] GOAL: {goal or plan.title}"))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] PLAN {plan.id}: "
+            + " -> ".join(f"{stage.machines}x {stage.machine_block.split(':')[-1]}" for stage in plan.stages)
+            + f" | {plan.source_count} {plan.source_item} -> {plan.final_count} {plan.final_item}"
         )
-        + f" | {plan.source_count} {plan.source_item} -> {plan.final_count} {plan.final_item}"
-    ))
+    )
 
     stage1 = _layout(0, 0)
     stage2 = _layout(8, 0)
@@ -397,13 +395,13 @@ async def run_industry_session(goal: str, connection) -> None:
             plan.stages[0].output_item,
         )
         if intermediate != plan.stages[0].output_count:
-            raise RuntimeError(
-                f"intermediate buffer mismatch {intermediate}/{plan.stages[0].output_count}"
+            raise RuntimeError(f"intermediate buffer mismatch {intermediate}/{plan.stages[0].output_count}")
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] HANDOFF: stage1 complete; intermediate={intermediate} {plan.stages[0].output_item}. "
+                "Opening stage2 intake on the same physical buffer."
             )
-        await connection.send(protocol.chat(
-            f"[yan-agent] HANDOFF: stage1 complete; intermediate={intermediate} {plan.stages[0].output_item}. "
-            "Opening stage2 intake on the same physical buffer."
-        ))
+        )
         await _configure_transporter_pull(
             connection,
             "industry-smelt-input-pull-a-handoff",
@@ -479,23 +477,26 @@ async def run_industry_session(goal: str, connection) -> None:
             source_experiment="yan-goal-industry-v3.0",
         )
 
-        await connection.send(protocol.chat(
-            f"[yan-agent] ACCEPT INDUSTRY: plan={plan.id} output={final_count} "
-            f"skill={skill_path.name}"
-        ))
-        await connection.send(protocol.finish(
-            f"goal industry v3.0 PASS: plan={plan.id} stages=2 machines=4 "
-            f"raw={plan.source_count} final={final_count} transit={transit_total} "
-            "worldPreserved=true skill=goal_driven_iron_processing_district_v1"
-        ))
+        await connection.send(
+            protocol.chat(f"[yan-agent] ACCEPT INDUSTRY: plan={plan.id} output={final_count} skill={skill_path.name}")
+        )
+        await connection.send(
+            protocol.finish(
+                f"goal industry v3.0 PASS: plan={plan.id} stages=2 machines=4 "
+                f"raw={plan.source_count} final={final_count} transit={transit_total} "
+                "worldPreserved=true skill=goal_driven_iron_processing_district_v1"
+            )
+        )
 
     except (RuntimeError, KeyError, TypeError, ValueError) as exc:
         try:
             rolled = await _action(connection, "industry-emergency-rollback", "rollback_session", {})
-            await connection.send(protocol.chat(
-                f"[yan-agent] INDUSTRY ROLLBACK removed={rolled.get('removed')} "
-                f"trackedAfter={rolled.get('tracked_after')}"
-            ))
+            await connection.send(
+                protocol.chat(
+                    f"[yan-agent] INDUSTRY ROLLBACK removed={rolled.get('removed')} "
+                    f"trackedAfter={rolled.get('tracked_after')}"
+                )
+            )
         except RuntimeError:
             pass
         await connection.send(protocol.error(f"goal industry v3.0 FAIL: {exc}"))

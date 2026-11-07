@@ -31,7 +31,7 @@ class P:
     def args(self) -> dict[str, int]:
         return {"x": self.x, "y": self.y, "z": self.z}
 
-    def shifted(self, dx: int, dz: int) -> "P":
+    def shifted(self, dx: int, dz: int) -> P:
         return P(self.x + dx, self.y, self.z + dz)
 
 
@@ -108,7 +108,9 @@ def _layout(dx: int, dz: int) -> FactoryLayout:
     )
 
 
-async def _action(connection, request_id: str, action: str, args: dict[str, Any] | None = None, *, timeout: float = 20.0) -> dict[str, Any]:
+async def _action(
+    connection, request_id: str, action: str, args: dict[str, Any] | None = None, *, timeout: float = 20.0
+) -> dict[str, Any]:
     await connection.send(protocol.action(request_id, action, args or {}))
     raw = await asyncio.wait_for(connection.recv(), timeout=timeout)
     message = json.loads(raw)
@@ -121,9 +123,7 @@ async def _action(connection, request_id: str, action: str, args: dict[str, Any]
 
 async def _wait(connection, label: str, ticks: int, timeout: float) -> None:
     result = await _action(connection, label, "wait_ticks", {"ticks": ticks}, timeout=timeout)
-    await connection.send(protocol.chat(
-        f"[yan-agent] WAIT {label}: {result.get('elapsed_ticks')} ticks"
-    ))
+    await connection.send(protocol.chat(f"[yan-agent] WAIT {label}: {result.get('elapsed_ticks')} ticks"))
 
 
 async def _find_site(connection) -> FactoryLayout:
@@ -144,15 +144,15 @@ async def _find_site(connection) -> FactoryLayout:
         )
         occupied = [row for row in (observed.get("blocks") or []) if not row.get("is_air", False)]
         if not occupied:
-            await connection.send(protocol.chat(
-                f"[yan-agent] SITE selected candidate={index} shift=({layout.shift_x},{layout.shift_z}) "
-                f"footprint={len(layout.footprint)} cells"
-            ))
+            await connection.send(
+                protocol.chat(
+                    f"[yan-agent] SITE selected candidate={index} shift=({layout.shift_x},{layout.shift_z}) "
+                    f"footprint={len(layout.footprint)} cells"
+                )
+            )
             return layout
 
-    raise RuntimeError(
-        "no free factory footprint found in six candidate sites; move to a more open area and retry"
-    )
+    raise RuntimeError("no free factory footprint found in six candidate sites; move to a more open area and retry")
 
 
 async def _place(connection, label: str, p: P, block: str) -> None:
@@ -182,11 +182,11 @@ async def _configure_transporter_pull(connection, label: str, p: P, side: str) -
 
 
 async def _build_factory(connection, layout: FactoryLayout) -> None:
-    await connection.send(protocol.chat(
-        "[yan-agent] BUILD: provisioning autonomous 2-line Mekanism smelting cell."
-    ))
+    await connection.send(protocol.chat("[yan-agent] BUILD: provisioning autonomous 2-line Mekanism smelting cell."))
 
-    await _place(connection, "mission-source", layout.source, "minecraft:chest[facing=north,type=single,waterlogged=false]")
+    await _place(
+        connection, "mission-source", layout.source, "minecraft:chest[facing=north,type=single,waterlogged=false]"
+    )
     await _place(connection, "mission-sink", layout.sink, "minecraft:chest[facing=north,type=single,waterlogged=false]")
     await _place(connection, "mission-smelter-a", layout.smelter_a, "mekanism:energized_smelter")
     await _place(connection, "mission-smelter-b", layout.smelter_b, "mekanism:energized_smelter")
@@ -196,10 +196,12 @@ async def _build_factory(connection, layout: FactoryLayout) -> None:
         "place_mekanism_filled_energy_cube",
         layout.cube.args(),
     )
-    await connection.send(protocol.chat(
-        f"[yan-agent] POWER SOURCE: placed precharged creative-tab cube "
-        f"energy={cube.get('internal_energy')} variant={cube.get('variant')}"
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] POWER SOURCE: placed precharged creative-tab cube "
+            f"energy={cube.get('internal_energy')} variant={cube.get('variant')}"
+        )
+    )
     await _place(connection, "mission-energy-a", layout.energy_a, "mekanism:basic_universal_cable")
     await _place(connection, "mission-energy-b", layout.energy_b, "mekanism:basic_universal_cable")
 
@@ -216,16 +218,32 @@ async def _build_factory(connection, layout: FactoryLayout) -> None:
     await _wait(connection, "mission-build-settle", 20, 6.0)
 
     # Smelter input from west, output to east. Energy enters from cube-facing side.
-    await _configure_side(connection, "mission-a-item-in", layout.smelter_a, transmission="ITEM", side="west", mode="INPUT")
-    await _configure_side(connection, "mission-a-item-out", layout.smelter_a, transmission="ITEM", side="east", mode="OUTPUT")
-    await _configure_side(connection, "mission-a-energy", layout.smelter_a, transmission="ENERGY", side="south", mode="INPUT")
+    await _configure_side(
+        connection, "mission-a-item-in", layout.smelter_a, transmission="ITEM", side="west", mode="INPUT"
+    )
+    await _configure_side(
+        connection, "mission-a-item-out", layout.smelter_a, transmission="ITEM", side="east", mode="OUTPUT"
+    )
+    await _configure_side(
+        connection, "mission-a-energy", layout.smelter_a, transmission="ENERGY", side="south", mode="INPUT"
+    )
 
-    await _configure_side(connection, "mission-b-item-in", layout.smelter_b, transmission="ITEM", side="west", mode="INPUT")
-    await _configure_side(connection, "mission-b-item-out", layout.smelter_b, transmission="ITEM", side="east", mode="OUTPUT")
-    await _configure_side(connection, "mission-b-energy", layout.smelter_b, transmission="ENERGY", side="north", mode="INPUT")
+    await _configure_side(
+        connection, "mission-b-item-in", layout.smelter_b, transmission="ITEM", side="west", mode="INPUT"
+    )
+    await _configure_side(
+        connection, "mission-b-item-out", layout.smelter_b, transmission="ITEM", side="east", mode="OUTPUT"
+    )
+    await _configure_side(
+        connection, "mission-b-energy", layout.smelter_b, transmission="ENERGY", side="north", mode="INPUT"
+    )
 
-    await _configure_side(connection, "mission-cube-out-a", layout.cube, transmission="ENERGY", side="north", mode="OUTPUT")
-    await _configure_side(connection, "mission-cube-out-b", layout.cube, transmission="ENERGY", side="south", mode="OUTPUT")
+    await _configure_side(
+        connection, "mission-cube-out-a", layout.cube, transmission="ENERGY", side="north", mode="OUTPUT"
+    )
+    await _configure_side(
+        connection, "mission-cube-out-b", layout.cube, transmission="ENERGY", side="south", mode="OUTPUT"
+    )
 
     # Universal Cable does not actively pull from adjacent energy providers while NORMAL.
     # Make the cable faces toward the cube explicit PULL sides; the network then emits to
@@ -248,9 +266,11 @@ async def _build_factory(connection, layout: FactoryLayout) -> None:
     await _configure_transporter_pull(connection, "mission-output-pull-a", layout.out_a[0], "west")
     await _configure_transporter_pull(connection, "mission-output-pull-b", layout.out_b[0], "west")
 
-    await connection.send(protocol.chat(
-        "[yan-agent] CONFIG: item INPUT/OUTPUT, dual source PULL, output PULL, and shared energy node configured."
-    ))
+    await connection.send(
+        protocol.chat(
+            "[yan-agent] CONFIG: item INPUT/OUTPUT, dual source PULL, output PULL, and shared energy node configured."
+        )
+    )
 
 
 async def _item_count(connection, label: str, p: P, item: str, side: str | None = None) -> tuple[int, dict[str, Any]]:
@@ -258,11 +278,7 @@ async def _item_count(connection, label: str, p: P, item: str, side: str | None 
     if side is not None:
         args = {**args, "side": side}
     inv = await _action(connection, label, "read_inventory", args)
-    count = sum(
-        int(row.get("count") or 0)
-        for row in (inv.get("items") or [])
-        if row.get("item") == item
-    )
+    count = sum(int(row.get("count") or 0) for row in (inv.get("items") or []) if row.get("item") == item)
     return count, inv
 
 
@@ -283,31 +299,45 @@ async def _verify_power(connection, layout: FactoryLayout) -> dict[str, int]:
     eb = int(b.get("energy") or 0)
 
     if ea <= 0:
-        await connection.send(protocol.chat(
-            "[yan-agent] REPAIR power-A: no stored energy; reapplying cube NORTH output and smelter SOUTH input."
-        ))
-        await _configure_side(connection, "mission-repair-cube-a", layout.cube, transmission="ENERGY", side="north", mode="OUTPUT")
-        await _configure_side(connection, "mission-repair-energy-a", layout.smelter_a, transmission="ENERGY", side="south", mode="INPUT")
+        await connection.send(
+            protocol.chat(
+                "[yan-agent] REPAIR power-A: no stored energy; reapplying cube NORTH output and smelter SOUTH input."
+            )
+        )
+        await _configure_side(
+            connection, "mission-repair-cube-a", layout.cube, transmission="ENERGY", side="north", mode="OUTPUT"
+        )
+        await _configure_side(
+            connection, "mission-repair-energy-a", layout.smelter_a, transmission="ENERGY", side="south", mode="INPUT"
+        )
     if eb <= 0:
-        await connection.send(protocol.chat(
-            "[yan-agent] REPAIR power-B: no stored energy; reapplying cube SOUTH output and smelter NORTH input."
-        ))
-        await _configure_side(connection, "mission-repair-cube-b", layout.cube, transmission="ENERGY", side="south", mode="OUTPUT")
-        await _configure_side(connection, "mission-repair-energy-b", layout.smelter_b, transmission="ENERGY", side="north", mode="INPUT")
+        await connection.send(
+            protocol.chat(
+                "[yan-agent] REPAIR power-B: no stored energy; reapplying cube SOUTH output and smelter NORTH input."
+            )
+        )
+        await _configure_side(
+            connection, "mission-repair-cube-b", layout.cube, transmission="ENERGY", side="south", mode="OUTPUT"
+        )
+        await _configure_side(
+            connection, "mission-repair-energy-b", layout.smelter_b, transmission="ENERGY", side="north", mode="INPUT"
+        )
 
     if ea <= 0 or eb <= 0:
         await _wait(connection, "mission-power-repair-settle", 40, 8.0)
-        a = await _action(connection, "mission-energy-reread-a", "read_energy", {**layout.smelter_a.args(), "side": "south"})
-        b = await _action(connection, "mission-energy-reread-b", "read_energy", {**layout.smelter_b.args(), "side": "north"})
+        a = await _action(
+            connection, "mission-energy-reread-a", "read_energy", {**layout.smelter_a.args(), "side": "south"}
+        )
+        b = await _action(
+            connection, "mission-energy-reread-b", "read_energy", {**layout.smelter_b.args(), "side": "north"}
+        )
         ea = int(a.get("energy") or 0)
         eb = int(b.get("energy") or 0)
 
     if ea <= 0 or eb <= 0:
         raise RuntimeError(f"power subsystem failed: smelterA={ea} smelterB={eb}")
 
-    await connection.send(protocol.chat(
-        f"[yan-agent] VERIFY POWER: smelterA={ea} smelterB={eb}"
-    ))
+    await connection.send(protocol.chat(f"[yan-agent] VERIFY POWER: smelterA={ea} smelterB={eb}"))
     return {"a": ea, "b": eb}
 
 
@@ -320,27 +350,37 @@ async def _seed_source(connection, layout: FactoryLayout) -> None:
     )
     if int(seeded.get("inserted") or 0) != 12:
         raise RuntimeError(f"failed to stage 12 raw iron: {seeded}")
-    await connection.send(protocol.chat(
-        "[yan-agent] MATERIAL: staged 12 raw iron in autonomous input buffer."
-    ))
+    await connection.send(protocol.chat("[yan-agent] MATERIAL: staged 12 raw iron in autonomous input buffer."))
 
 
 async def _verify_distribution(connection, layout: FactoryLayout) -> dict[str, Any]:
     await _wait(connection, "mission-distribute", 120, 12.0)
-    raw_source, _ = await _item_count(connection, "mission-source-after-distribution", layout.source, "minecraft:raw_iron")
-    raw_a, inv_a = await _item_count(connection, "mission-a-after-distribution", layout.smelter_a, "minecraft:raw_iron", "west")
-    raw_b, inv_b = await _item_count(connection, "mission-b-after-distribution", layout.smelter_b, "minecraft:raw_iron", "west")
+    raw_source, _ = await _item_count(
+        connection, "mission-source-after-distribution", layout.source, "minecraft:raw_iron"
+    )
+    raw_a, inv_a = await _item_count(
+        connection, "mission-a-after-distribution", layout.smelter_a, "minecraft:raw_iron", "west"
+    )
+    raw_b, inv_b = await _item_count(
+        connection, "mission-b-after-distribution", layout.smelter_b, "minecraft:raw_iron", "west"
+    )
     transit = await _read_transit(connection, layout, "mission-transit-after-distribution")
     t = int(transit.get("total_items") or 0)
 
-    await connection.send(protocol.chat(
-        f"[yan-agent] VERIFY FEED: sourceRaw={raw_source} smelterAraw={raw_a} smelterBraw={raw_b} transit={t}"
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] VERIFY FEED: sourceRaw={raw_source} smelterAraw={raw_a} smelterBraw={raw_b} transit={t}"
+        )
+    )
 
     # The machines may already have converted some raw iron by this point, so participation
     # is inferred from either raw input still present or iron output already present.
-    ingot_a, _ = await _item_count(connection, "mission-a-output-after-distribution", layout.smelter_a, "minecraft:iron_ingot", "east")
-    ingot_b, _ = await _item_count(connection, "mission-b-output-after-distribution", layout.smelter_b, "minecraft:iron_ingot", "east")
+    ingot_a, _ = await _item_count(
+        connection, "mission-a-output-after-distribution", layout.smelter_a, "minecraft:iron_ingot", "east"
+    )
+    ingot_b, _ = await _item_count(
+        connection, "mission-b-output-after-distribution", layout.smelter_b, "minecraft:iron_ingot", "east"
+    )
     if raw_a + ingot_a == 0 or raw_b + ingot_b == 0:
         raise RuntimeError(
             f"input distribution starved a processing line: A(raw={raw_a},ingot={ingot_a}) "
@@ -361,17 +401,28 @@ async def _wait_for_output(connection, layout: FactoryLayout) -> dict[str, Any]:
     for cycle in range(1, 8):
         await _wait(connection, f"mission-process-{cycle}", 200, 16.0)
 
-        sink_ingots, _ = await _item_count(connection, f"mission-sink-cycle-{cycle}", layout.sink, "minecraft:iron_ingot")
-        raw_source, _ = await _item_count(connection, f"mission-source-cycle-{cycle}", layout.source, "minecraft:raw_iron")
-        raw_a, _ = await _item_count(connection, f"mission-a-cycle-{cycle}", layout.smelter_a, "minecraft:raw_iron", "west")
-        raw_b, _ = await _item_count(connection, f"mission-b-cycle-{cycle}", layout.smelter_b, "minecraft:raw_iron", "west")
+        sink_ingots, _ = await _item_count(
+            connection, f"mission-sink-cycle-{cycle}", layout.sink, "minecraft:iron_ingot"
+        )
+        raw_source, _ = await _item_count(
+            connection, f"mission-source-cycle-{cycle}", layout.source, "minecraft:raw_iron"
+        )
+        raw_a, _ = await _item_count(
+            connection, f"mission-a-cycle-{cycle}", layout.smelter_a, "minecraft:raw_iron", "west"
+        )
+        raw_b, _ = await _item_count(
+            connection, f"mission-b-cycle-{cycle}", layout.smelter_b, "minecraft:raw_iron", "west"
+        )
         transit = await _read_transit(connection, layout, f"mission-transit-cycle-{cycle}")
         t = int(transit.get("total_items") or 0)
 
-        ingot_a, _ = await _item_count(connection, f"mission-a-out-cycle-{cycle}", layout.smelter_a, "minecraft:iron_ingot", "east")
-        ingot_b, _ = await _item_count(connection, f"mission-b-out-cycle-{cycle}", layout.smelter_b, "minecraft:iron_ingot", "east")
+        ingot_a, _ = await _item_count(
+            connection, f"mission-a-out-cycle-{cycle}", layout.smelter_a, "minecraft:iron_ingot", "east"
+        )
+        ingot_b, _ = await _item_count(
+            connection, f"mission-b-out-cycle-{cycle}", layout.smelter_b, "minecraft:iron_ingot", "east"
+        )
         remaining_raw = raw_source + raw_a + raw_b
-        visible_ingots = sink_ingots + ingot_a + ingot_b
 
         row = {
             "cycle": cycle,
@@ -382,34 +433,58 @@ async def _wait_for_output(connection, layout: FactoryLayout) -> dict[str, Any]:
             "transit": t,
         }
         history.append(row)
-        await connection.send(protocol.chat(
-            f"[yan-agent] PROGRESS {cycle}: sink={sink_ingots} machineOut={ingot_a}/{ingot_b} "
-            f"rawRemaining={remaining_raw} transit={t}"
-        ))
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] PROGRESS {cycle}: sink={sink_ingots} machineOut={ingot_a}/{ingot_b} "
+                f"rawRemaining={remaining_raw} transit={t}"
+            )
+        )
 
         if sink_ingots == 12 and remaining_raw == 0 and ingot_a == 0 and ingot_b == 0 and t == 0:
             return {"history": history, "cycles": cycle, "sink_ingots": sink_ingots}
 
         # If machine output is accumulating, repair output interfaces without touching inputs/power.
         if cycle >= 2 and (ingot_a > 0 or ingot_b > 0):
-            await connection.send(protocol.chat(
-                f"[yan-agent] DIAGNOSE OUTPUT: machine buffers hold {ingot_a}/{ingot_b}; "
-                "reasserting OUTPUT sides and extractor PULL only."
-            ))
-            await _configure_side(connection, f"mission-output-repair-a-{cycle}", layout.smelter_a, transmission="ITEM", side="east", mode="OUTPUT")
-            await _configure_side(connection, f"mission-output-repair-b-{cycle}", layout.smelter_b, transmission="ITEM", side="east", mode="OUTPUT")
-            await _configure_transporter_pull(connection, f"mission-output-pull-repair-a-{cycle}", layout.out_a[0], "west")
-            await _configure_transporter_pull(connection, f"mission-output-pull-repair-b-{cycle}", layout.out_b[0], "west")
+            await connection.send(
+                protocol.chat(
+                    f"[yan-agent] DIAGNOSE OUTPUT: machine buffers hold {ingot_a}/{ingot_b}; "
+                    "reasserting OUTPUT sides and extractor PULL only."
+                )
+            )
+            await _configure_side(
+                connection,
+                f"mission-output-repair-a-{cycle}",
+                layout.smelter_a,
+                transmission="ITEM",
+                side="east",
+                mode="OUTPUT",
+            )
+            await _configure_side(
+                connection,
+                f"mission-output-repair-b-{cycle}",
+                layout.smelter_b,
+                transmission="ITEM",
+                side="east",
+                mode="OUTPUT",
+            )
+            await _configure_transporter_pull(
+                connection, f"mission-output-pull-repair-a-{cycle}", layout.out_a[0], "west"
+            )
+            await _configure_transporter_pull(
+                connection, f"mission-output-pull-repair-b-{cycle}", layout.out_b[0], "west"
+            )
 
     raise RuntimeError(f"production timeout; history={history}")
 
 
 async def run_mission_session(connection) -> None:
     await connection.send(protocol.hello("yan-autonomous-factory-v2.0"))
-    await connection.send(protocol.chat(
-        "[yan-agent] MISSION: autonomously build and commission a two-line powered Mekanism factory. "
-        "Goal: 12 raw iron -> 12 iron ingots. No hand-built fixture required."
-    ))
+    await connection.send(
+        protocol.chat(
+            "[yan-agent] MISSION: autonomously build and commission a two-line powered Mekanism factory. "
+            "Goal: 12 raw iron -> 12 iron ingots. No hand-built fixture required."
+        )
+    )
 
     layout: FactoryLayout | None = None
     try:
@@ -424,8 +499,12 @@ async def run_mission_session(connection) -> None:
         raw_source, _ = await _item_count(connection, "mission-final-source", layout.source, "minecraft:raw_iron")
         raw_a, _ = await _item_count(connection, "mission-final-a", layout.smelter_a, "minecraft:raw_iron", "west")
         raw_b, _ = await _item_count(connection, "mission-final-b", layout.smelter_b, "minecraft:raw_iron", "west")
-        out_a, _ = await _item_count(connection, "mission-final-out-a", layout.smelter_a, "minecraft:iron_ingot", "east")
-        out_b, _ = await _item_count(connection, "mission-final-out-b", layout.smelter_b, "minecraft:iron_ingot", "east")
+        out_a, _ = await _item_count(
+            connection, "mission-final-out-a", layout.smelter_a, "minecraft:iron_ingot", "east"
+        )
+        out_b, _ = await _item_count(
+            connection, "mission-final-out-b", layout.smelter_b, "minecraft:iron_ingot", "east"
+        )
         transit = await _read_transit(connection, layout, "mission-final-transit")
         t = int(transit.get("total_items") or 0)
 
@@ -477,23 +556,30 @@ async def run_mission_session(connection) -> None:
             source_experiment="yan-autonomous-factory-v2.0",
         )
 
-        await connection.send(protocol.chat(
-            f"[yan-agent] ACCEPT MISSION: factory commissioned, output=12 iron ingots, "
-            f"machines=2 transporters={len(layout.all_transporters)} skill={skill_path.name}"
-        ))
-        await connection.send(protocol.finish(
-            "autonomous factory v2.0 PASS: "
-            f"raw=12 ingots={sink_ingots} machines=2 powerA={power['a']} powerB={power['b']} "
-            f"transporters={len(layout.all_transporters)} transit={t} "
-            "worldPreserved=true skill=autonomous_parallel_smelting_factory_v1"
-        ))
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] ACCEPT MISSION: factory commissioned, output=12 iron ingots, "
+                f"machines=2 transporters={len(layout.all_transporters)} skill={skill_path.name}"
+            )
+        )
+        await connection.send(
+            protocol.finish(
+                "autonomous factory v2.0 PASS: "
+                f"raw=12 ingots={sink_ingots} machines=2 powerA={power['a']} powerB={power['b']} "
+                f"transporters={len(layout.all_transporters)} transit={t} "
+                "worldPreserved=true skill=autonomous_parallel_smelting_factory_v1"
+            )
+        )
 
     except (RuntimeError, KeyError, TypeError, ValueError) as exc:
         try:
             rolled = await _action(connection, "mission-emergency-rollback", "rollback_session", {})
-            await connection.send(protocol.chat(
-                f"[yan-agent] MISSION ROLLBACK: removed={rolled.get('removed')} trackedAfter={rolled.get('tracked_after')}"
-            ))
+            await connection.send(
+                protocol.chat(
+                    f"[yan-agent] MISSION ROLLBACK: removed={rolled.get('removed')} "
+                    f"trackedAfter={rolled.get('tracked_after')}"
+                )
+            )
         except RuntimeError:
             pass
         await connection.send(protocol.error(f"autonomous factory v2.0 FAIL: {exc}"))

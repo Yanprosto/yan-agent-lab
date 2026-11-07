@@ -6,8 +6,8 @@ Only verified live-world results should be admitted here.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +37,7 @@ def save_skill(
         "implementation": implementation,
         "verification": verification,
         "source_experiment": source_experiment,
-        "verified_at_utc": datetime.now(timezone.utc).isoformat(),
+        "verified_at_utc": datetime.now(UTC).isoformat(),
     }
     path = _skills_dir() / f"{skill_id}.json"
     temp = path.with_suffix(".json.tmp")
