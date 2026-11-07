@@ -14,6 +14,7 @@ from websockets.asyncio.server import ServerConnection, serve
 
 from mcbuild.config import Config
 from mcbuild.server import protocol
+from mcbuild.server.district_session import run_district_session
 from mcbuild.server.environment_planner import BranchRoute, generate_route_plans, replan_failed_branch
 from mcbuild.server.industry_session import run_industry_session
 from mcbuild.server.iron_works_session import run_iron_works_session
@@ -64,11 +65,12 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
         "plan",
         "layout",
         "module",
+        "district",
     }:
         await connection.send(
             protocol.error(
                 'Expected {"cmd": "build|project|probe|functional|experiment|mekanism|splitter|'
-                'environment|mission|industry|machine|plan|layout|module", ...}.'
+                'environment|mission|industry|machine|plan|layout|module|district", ...}.'
             )
         )
         return
@@ -112,6 +114,8 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
             await run_layout_session(str(prompt or ""), logged_connection)
         elif command == "module":
             await run_module_session(str(prompt or ""), logged_connection)
+        elif command == "district":
+            await run_district_session(str(prompt or ""), logged_connection)
         else:
             normalized_goal = " ".join(str(prompt).lower().strip().split())
             iron_works_aliases = (
