@@ -199,6 +199,19 @@
     "runs": [
      "v0.5 transporter mode PASS 2026-11-07: NORMAL left source full, PULL emptied it"
     ]
+   },
+   "independent_pull_split": {
+    "value": {
+     "chest_filled_item_by_item": "winner_takes_all",
+     "chest_full_and_pullers_started_together": "even"
+    },
+    "evidence": "runtime_observed",
+    "note": "several independent PULL transporters on one chest, each leading to its own machine",
+    "runs": [
+     "20261107T145746Z_district_6a94226c: 24 dust trickling in, 3 smelters, intake open: busy polls 76/4/0, one smelter did ~23 of 24 operations (5700 ticks, as slow as one machine)",
+     "20261107T150311Z_district_2fcc58da: same goal, intake gated until the chest held all 24: busy polls 26/26/27",
+     "20261107T150935Z_district_791e1c30: 2 enrichment chambers on a full chest: busy polls 11/11"
+    ]
    }
   },
   "mekanism:basic_universal_cable": {
