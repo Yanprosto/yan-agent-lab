@@ -5,8 +5,8 @@ A mock-up for judging the look, **not** generator output: vanilla blocks stand i
 
     uv run python tools/concept/scene_in_void.py --out docs/images
 
-Writes ``concept-scene-in-void.png`` (overview) and ``concept-mass-interior.png`` (cutaway of one
-enterable giant form, with something to find inside).
+Writes ``concept-scene-in-void.png`` (overview), ``concept-scene-closeup.png`` (the district alone) and
+``concept-mass-interior.png`` (cutaway of one enterable giant form, with something to find inside).
 """
 
 from __future__ import annotations
@@ -154,8 +154,9 @@ def district(c: Canvas, y: int) -> None:
         c.put(x, y, 107, "cyan_concrete")
     for z in range(95, 107):
         c.put(73, y, z - 6 if z < 100 else 100, "cyan_concrete")
-    c.shell((133, y, 114), (147, y, 128), "purple_concrete", wall=0)  # teleport pad
-    c.box((139, y + 1, 120), (141, y + 52, 122), "light_blue_stained_glass")
+    c.box((133, y, 114), (147, y, 128), "purple_concrete")  # teleport pad
+    c.box((136, y, 117), (144, y, 125), "crying_obsidian")
+    c.box((139, y + 1, 120), (141, y + 40, 122), "light_blue_stained_glass")
     for x, z in ((60, 84), (84, 84), (104, 82), (130, 84), (132, 108), (86, 110)):  # warm lamp posts
         c.box((x, y, z), (x, y + 4, z), DARK)
         c.box((x, y + 5, z), (x + 1, y + 6, z + 1), WARM)
@@ -174,7 +175,8 @@ def overview() -> Image.Image:
     ragged_slab(c, 35, 175, 55, 150, 0, 3, rng)
     c.clear((46, 0, 62), (74, 3, 84))  # a shaft in the floor
     ragged_slab(c, 70, 160, 40, 130, -70, 3, rng)  # the tier below
-    for px, pz in ((14, 18), (182, 24), (20, 168), (176, 164)):
+    # not on the x = z diagonal: in this view it runs through the scene and a tower would hide it
+    for px, pz in ((12, 36), (186, 26), (16, 166), (190, 96)):
         lattice_pillar(c, px, pz, -70, 175)
     ring(c, 100, 118, 98, 68)
     giant_box(c, (112, 100, 22), (160, 126, 52), ((120, 104, 50), (134, 118, 53)), (150, 104, 30))
@@ -183,6 +185,15 @@ def overview() -> Image.Image:
     c.line((24, 119, 28), (112, 118, 30), RIB)
     district(c, 3)
     debris(c, rng)
+    return _compose(render_iso(c.grid, yaw=0))
+
+
+def closeup() -> Image.Image:
+    """The district alone on its platform, for a closer look at what a scene contains."""
+    rng = random.Random(7)
+    c = Canvas()
+    ragged_slab(c, 52, 150, 70, 132, 0, 3, rng)
+    district(c, 3)
     return _compose(render_iso(c.grid, yaw=0))
 
 
@@ -229,13 +240,16 @@ def _compose(img: Image.Image) -> Image.Image:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("docs/images"))
-    parser.add_argument("--only", choices=["overview", "interior"])
+    parser.add_argument("--only", choices=["overview", "interior", "closeup"])
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    if args.only != "overview":
+    if args.only in (None, "interior"):
         interior().save(args.out / "concept-mass-interior.png")
         print("wrote concept-mass-interior.png")
-    if args.only != "interior":
+    if args.only in (None, "closeup"):
+        closeup().save(args.out / "concept-scene-closeup.png")
+        print("wrote concept-scene-closeup.png")
+    if args.only in (None, "overview"):
         overview().save(args.out / "concept-scene-in-void.png")
         print("wrote concept-scene-in-void.png")
 
