@@ -168,3 +168,29 @@ Rules:
 Broken systems do not tick. Only restored parts run; generated plants must not be
 placed as kilometres of live machines. Tick-budget rules (I7) apply to placement at
 generation time as well as to runtime edits.
+
+## 11. Two generation modes and three scales (decision 2026-11-07)
+
+Factories are generated in two directions; the engine is the same, only the side the
+constraints come from differs.
+
+| Mode | Order | Input → output | Lore origin (WORLD §3b) |
+| --- | --- | --- | --- |
+| **A. Retrofit** | world first, factory later | given volume → layout that fits it | later human workshops inside existing halls |
+| **B. Infrastructure** | factory first, world around it | process + site → layout → architecture shell | old machine plants, built by the builders |
+
+In mode B the agent produces the process skeleton (machines, routes, trunk lines) and
+the environment line (palettes, sectors, aging) wraps it in architecture.
+
+Three scales, matching the WORLD scale table:
+
+| Scale | Size | What | Needed by |
+| --- | --- | --- | --- |
+| **Cell** | 3–10 blocks | one machine with its connections | both (machine probe, done) |
+| **Shop (module)** | 16–48 blocks, one room | verified machine group with input, output and power ports on its boundary | A: fit into a room; B: brick of a district |
+| **Plant / district** | 100–500 blocks, tens of chunks | shops joined by power and freight trunk lines | B |
+
+Build order: 3D layout in a volume → shop modules with ports → districts with trunk
+lines (the shared power backbone lives here) → parallel machines per stage. The project
+orchestrator from the mcbuild fork (work packages with interfaces) is the first
+candidate for composing districts (I6).

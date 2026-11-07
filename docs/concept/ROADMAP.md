@@ -6,101 +6,90 @@ Status words follow invariant I15:
 - **demonstrated in branch** — passed live in a branch, not merged;
 - **planned** — not built.
 
-## Current state (as of 2026-11-06)
+Live runs below were made on the headless lab (`tools/headless_lab/`: NeoForge 21.1.255
++ Mekanism 10.7.19.85, the audited jar) unless noted.
 
-### Proven on `main` (up to v0.9)
+## Current state (as of 2026-11-07)
 
-| Capability | Version |
+### Proven on `main`
+
+| Capability | Where | Live evidence |
+| --- | --- | --- |
+| Bridge, functional API, experiment loop (v0.1–v0.4) | mod + `server/` | v0.4 PASS |
+| Mekanism transporter mode mutation (v0.5) | `server/` | PASS |
+| Topology / spatial search, skill memory (v0.6–v0.9) | `server/` | v0.9 PASS (8 candidates, 7 passing, from seed skill) |
+| Environment builder, local repair, transit accounting (v1.0–v1.2) | `server/` | PASS first route; PASS with injected fault (one branch rebuilt) |
+| Powered multi-cell factory (v2.0–v2.1) | `server/` | PASS 24 raw → 24 ingots |
+| Goal-driven industry, iron works, plan compiler (v3.0–v4.1) | `server/` | PASS 18 → 24; PASS 54 → 72 (12 machines) |
+| Headless lab, `/yanlab` console command | `tools/headless_lab/`, mod | all rows of this table |
+| Skill memory with committed seeds | `skill_store`, `yan_knowledge/seed/` | fresh checkout PASS |
+| Mechanism catalog (blocks, 842 recipes, 736 tags, evidence levels) | `mcbuild.catalog`, `yan_knowledge/catalog/` | tests; facts cite runs |
+| Green CI (ruff, format, ty, pytest) | `.github/workflows/ci.yml` | 324 tests |
+| Mekanism recon audit | `docs/recon/` | docs |
+
+### Demonstrated in branch (PR #30, ready)
+
+| Capability | Live evidence |
 | --- | --- |
-| Bidirectional bridge: action → observation rounds | v0.1–v0.2 |
-| Functional API: inspect, inventory, energy, real-tick wait, safe place/remove | v0.3 |
-| Experiment lifecycle: build, seed, wait, observe, score, rollback, mutate, retry | v0.4 |
-| Mekanism transporter mode mutation judged by live item flow | v0.5 |
-| Skill memory (JSON snapshot) + topology mutation | v0.6 |
-| Runtime logging to `yan-runtime-logs` | v0.7 |
-| Memory-seeded topology candidate search, ranked | v0.8 |
-| Spatial candidate search (axis, branch length, drop) | v0.9 |
-| Mekanism recon audit (javap, oracle defaults) | docs |
-| mcbuild base: DSL, render, single-build agent, project orchestrator | upstream |
-
-*Run-log ids for each row: to be filled during consolidation.*
-
-### Demonstrated in branches, not on `main`
-
-Industrial line (each branch builds on the previous):
-
-| Branch | Claimed capability (vision §19) |
-| --- | --- |
-| `yan-local-repair-v1.1` | local branch repair, obstacle-aware routing |
-| `yan-transit-aware-v1.2` | transit inspection / clearing in accounting |
-| `yan-autonomous-factory-v2.0` | production cell |
-| `yan-powered-factory-v2.1` | precharged energy cube, powered cells |
-| `yan-goal-industry-v3.0` | goal → two-stage process |
-| `yan-iron-works-v4.0` | 18 raw iron → 24 dust → 24 ingots, exact accounting |
-| `yan-plan-compiler-v4.1` | plan compiler (scope to be confirmed) |
-
-Environment / visual line: `yan-environment-builder-v1.0`, `yan-palette-*`,
-`yan-sector-*`, `yan-semantic-catalog-v1`, `yan-visual-catalog-v1`,
-`yan-modpack-palette-compiler-v0.1`, `yan-runtime-registry-recon-v1`.
+| Generic machine probe: any catalog processor verified in a minimal cell | smelter, crusher (first ever run), enrichment chamber: PASS |
+| Process planner v1: goal → catalog chains → line of verified cells, fallback | 8 ingots from raw iron (enrich → smelt) PASS; 4 dust from ingots (crusher) PASS |
 
 ### Known debt against the invariants
 
-- **I14:** each experiment is a hand-written session in `server/ws_server.py`
-  (+ a Java command). No shared mission engine yet.
-- **L7 skill format:** `skill_store.py` stores run snapshots, not parameterised skills.
-- **T1 simulation:** absent; every candidate evaluation costs real ticks.
-- **I15:** most of the industrial line lives only in branches.
+- **I14:** v0.4–v4.1 sessions in `server/ws_server.py` and mission modules are still
+  hand-written; new work (probe, planner) is data-driven. Port old sessions as needed.
+- **Layout:** the planner lays a straight line in free space (no 3D placement).
+- **Power:** one creative cube per machine (no shared backbone).
+- **T1 simulation:** absent; the catalog has the numbers it needs.
+- Fallback path of the planner not yet exercised live.
 
 ## Milestones
 
-Only one milestone is active at a time.
+### M0 — Concept fixed  ← finishing
 
-### M0 — Concept fixed  ← active
+- [x] Concept split into vision, invariants, world, gameplay, architecture, roadmap, decisions.
+- [x] `AGENTS.md` points to `docs/concept/`.
+- [ ] This branch merged to `main`.
 
-- [ ] Owner reviews `INVARIANTS.md`, `ARCHITECTURE.md`, this file.
-- [ ] Every item in `OPEN_DECISIONS.md` is decided or explicitly deferred.
-- [ ] `AGENTS.md` points to `docs/concept/`.
+### M1 — Consolidation  ✓ done 2026-11-07
 
-### M1 — Consolidation
+Factory chain #9–#17 verified live and merged (#26), skill memory (#27/#28), CI green.
 
-Merge the industrial line into `main` in order, with a passing live run per merge,
-and fill in run-log ids above. Decide which environment/visual branches merge and
-which stay experimental.
-*Done when:* `main` contains the iron-works capability and the roadmap tables match.
+### M2 — Catalog and generic compiler  ← active
 
-### M2 — Shared mission engine + Plan IR
+- [x] Mechanism catalog with evidence levels (#29).
+- [x] Generic machine probe (#30).
+- [x] Process planner v1: chains from recipes, verified cell line, fallback (#30).
+- [ ] Flexible 3D layout in a given volume (see M3 step 1).
 
-Extract the common experiment cycle from `ws_server.py` into one engine (ARCHITECTURE
-§6). Define the IR levels (§2) as typed data. Re-express at least two existing
-experiments (splitter, iron works) as mission data.
-*Done when:* the two experiments run through the engine with no experiment-specific
-session function, and their logs/verdicts are unchanged.
+### M3 — Factories at three scales (decision 2026-11-07, ARCHITECTURE §11)
 
-### M3 — Branching Industrial Planner (vision §20)
+Ordered steps:
 
-Beam search across ProcessGraph → Topology → Layout, with T0 checks and a first T1
-event simulator built from L2 facts.
-*Done when*, for a goal like "N iron ingots in region R":
-
-- at least 5 process/topology candidates are generated and scored, at least 2
-  structurally different ones reach T1;
-- the best candidate is built in stages and verified live;
-- an injected failure (blocked route / wrong side config) is diagnosed and repaired
-  locally, or the next-best candidate is used, with diagnosis in the log;
-- T1 predictions vs live observations are logged and discrepancies recorded;
-- no goal-specific Python function was written.
+1. **3D layout in a given volume** (mode A core). Test volumes: low hall, vertical shaft,
+   hall with columns, L corridor. Machines placed in free cells, transporters routed in
+   3D, machine sides set from where the routes arrive.
+   *Done when:* one goal in three volumes yields three different layouts, all passing
+   live with exact accounting, with no volume-specific code.
+2. **Shop as a module with ports.** A verified group of machines with input, output and
+   power ports on its boundary.
+   *Done when:* a shop is built from its module description in two different
+   volumes and passes; its ports are recorded.
+3. **District from shops + trunk lines** (mode B). Shared power backbone and freight
+   lines across chunks connect shops; architecture is generated around the layout.
+   *Done when:* two shops tens of blocks apart, one power source, one freight trunk,
+   pass together; breaking one backbone segment is diagnosed and repaired locally.
+4. **Parallel machines per stage** inside a shop when the goal needs throughput.
+   *Done when:* a 24-ingot goal with a time limit puts 2–3 machines on the bottleneck
+   stage, every machine participates, accounting exact.
 
 ### M4 — Verified modules + first broken plant
 
-Turn M3 results into parameterised modules (ARCHITECTURE §5), compose a small plant
-from at least two of them, then generate a damage set (§9) for it.
-*Done when:* a generated plant was verified working, broken in 3+ places, and a
-player (or the engine in helper mode, as a test) restores it to the same contract
-using only the planned repair items.
+Compose a small plant from verified shops, then generate a damage set
+(ARCHITECTURE §9). *Done when:* a generated plant was verified working, broken in 3+
+places, and restored to the same contract using only the planned repair items.
 
 ### Later (order not fixed)
 
-Shared infrastructure between lines → workshop / district composition → integration
-with the in-game world generator (D8) → sector-scale aging and damage → runtime helper
-mode via NPCs (vision §0, §21). Each gets done-criteria when it
-becomes active.
+T1 event simulation from catalog facts → integration with the in-game world generator
+(D8) → sector-scale aging and damage → runtime helper mode via NPCs (vision §0, §21).

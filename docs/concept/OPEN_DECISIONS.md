@@ -101,4 +101,10 @@ Wood, food, ores when the whole world is megastructure; which BMC5 parts remain.
   there is lost, including on death mid-cycle. (GAMEPLAY §1a)
 - **2026-11-07 — Immutable teleport zone.** Settlement and warehouse sit in an
   immutable zone around the teleport, untouched by events and rebuilds. Invariant I19.
+- **2026-11-07 — Two generation modes, three scales.** Mode A (world first: fit a
+  factory into a given volume; later human workshops) and mode B (factory first:
+  process and trunk lines, architecture generated around them; old machine plants,
+  tens of chunks). Scales: cell, shop module with ports, district. In mode B the
+  environment line wraps the agent's process skeleton in architecture.
+  (ARCHITECTURE §11, WORLD §3b, ROADMAP M3)
 
