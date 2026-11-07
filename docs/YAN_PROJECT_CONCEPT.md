@@ -6,8 +6,41 @@
 >
 > If a future implementation choice conflicts with this document, prefer this concept
 > unless there is a deliberate, documented decision to change it.
+>
+> This file is the **vision**; §0 defines the product model. Hard rules, architecture, current state and open
+> questions live in [`concept/`](concept/README.md); on conflict,
+> `concept/INVARIANTS.md` takes precedence over this text.
 
 ---
+
+## 0. Product model (read first)
+
+YAN is **part of a world generator**, not primarily an in-game assistant.
+
+~~~text
+agent designs a functional factory / sector        (generation time)
+→ the design is built and verified to actually work
+→ the generator breaks it in chosen places and ages it
+→ the result is placed in the world
+→ the player restores it (midgame) or strips it for resources
+~~~
+
+Why an agent: so that kilometres of factories, process chains and machine halls do
+not have to be designed by hand for every bay, hall and plant.
+
+Consequences:
+
+- The **player** does the restoration and scavenging. The agent creates the content
+  the player plays through; it does not play the game for them.
+- Damage is designed with knowledge of the working system: the generator knows what
+  each break disables and what each repair restores, so every restoration is solvable
+  and rewarding.
+- A secondary, later mode uses the same engine at runtime as a **helper the player
+  commands** (e.g. through maid/helper NPCs): "repair this line", "build me a smelter
+  cell". Missions like "restore this sector" in §39–§40 describe what the engine can do,
+  in either mode.
+
+Everything below describes the engine's capabilities; this section says who uses them.
 
 ## 1. Core vision
 
@@ -773,6 +806,9 @@ everything in empty air.
 
 ## 22. Long-term civilization loop
 
+> **2026-11-06:** the generator creates no populated districts; settlement is the
+> player's own (MCA). See `concept/WORLD.md` §3 and `concept/GAMEPLAY.md` §3.
+
 The industrial system should feed a larger civilization loop:
 
 ~~~text
@@ -803,6 +839,9 @@ visibly more civilized.
 ---
 
 ## 23. NPCs and settlement direction
+
+> **2026-11-06:** NPCs run on a reskinned Touhou Little Maid engine; MCA only in the
+> player's settlement. See `concept/WORLD.md` §3.
 
 NPC systems should eventually interact with infrastructure.
 

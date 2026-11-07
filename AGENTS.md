@@ -1,8 +1,20 @@
 # YAN Agent Lab: durable project context
 
+## Start here
+
+The canonical concept lives in [docs/concept/](docs/concept/README.md): invariants,
+world, gameplay, architecture, roadmap and the dated decision log. On conflict it
+wins over the history documents below.
+
+## Minecraft project scope recovery
+
+Read [docs/MINECRAFT_PROJECT_INDEX.md](docs/MINECRAFT_PROJECT_INDEX.md) first when a task crosses modpack, world generation or agent behavior. Read [docs/MODPACK_SPEC.md](docs/MODPACK_SPEC.md) before changing mod selection, installer/lock or world migration; read [docs/WORLD_DESIGN.md](docs/WORLD_DESIGN.md), [docs/GAMEPLAY_SYSTEMS.md](docs/GAMEPLAY_SYSTEMS.md) and [docs/CIVILIZATION_PROGRESSION.md](docs/CIVILIZATION_PROGRESSION.md) before changing The City generation, progression or gameplay. This repository does not itself guarantee a complete installable BMC5 modpack. Keep historical user decisions, proposals, PR experiments and live-verified behavior distinct; do not infer the current installed JAR list from old conversations.
+
 Before changing factory planning, simulation, mod reconnaissance or generator scope:
 
-1. Read `docs/YAN_PROJECT_CONCEPT.md` for the intended goal and design principles.
+1. Read `docs/concept/INVARIANTS.md` (hard rules) and `docs/concept/ROADMAP.md`
+   (verified state, active milestone); then `docs/concept/ARCHITECTURE.md` for the
+   layer you touch, and `docs/YAN_PROJECT_CONCEPT.md` for the long-term vision.
 2. Read `docs/recon/MEKANISM_AUDIT.md` and `docs/recon/mekanism/oracle_defaults.json`.
 3. Consult archived source evidence for the specific mechanism before requesting another scan.
 
