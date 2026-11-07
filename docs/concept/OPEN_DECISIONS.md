@@ -85,12 +85,12 @@ void or road between them. Either way, how does it fit "far runs into the wastes
 
 ## D18. The look of the world
 
-The first sketches were rejected (WORLD §3d). Needed from the owner: which images or scenes are
-"it" (BLAME! panels, Peripeteia screenshots, anything else), what exactly is liked in them, and a
-check in the owner's own game (shaders, light, fog) on a small piece of generated world, since
-an isometric render cannot show atmosphere. Note: Peripeteia (Ninth Exodus) is described by its
-developers as a spiritual successor to Deus Ex (immersive sim); a BLAME! link appears only in
-fan comparisons, so what the owner takes from it must be stated, not assumed.
+References received 2026-11-07 (REFERENCES.md): BLAME! + Peripeteia + The Ascent + RUINER + Hive Worlds;
+The Arcology and Post Apocalypse City approved (a giant megablock, dozens of which make a world).
+Open: (a) is "inhabited-looking without NPC crowds" right (traces and light, not people); (b) how much
+of the surface density is generated automatically (greeble layer) versus authored; (c) palette per
+tier (teal-green, yellow-green, red-orange?); (d) a check in the owner's game (shaders, fog) on a small
+generated piece, since a diagram cannot show atmosphere.
 
 ## D15. Client-side check of tall worlds
 
