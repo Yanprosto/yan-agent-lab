@@ -26,7 +26,13 @@ The script verifies every Mekanism jar by SHA-256; the core jar is the one the
 uv run python tools/headless_lab/run.py experiment   # v0.4 vanilla hopper loop
 uv run python tools/headless_lab/run.py mekanism     # v0.5 transporter mode mutation
 uv run python tools/headless_lab/run.py splitter     # v0.9 spatial topology search
+uv run python tools/headless_lab/run.py machine --spec mekanism:crusher --pos "800 -60 0"
 ```
+
+`machine` builds a minimal powered cell for any catalog processor (item in west, out
+east, energy south), runs 4 operations of a catalog recipe (or the one given after the
+block id), checks the exact output and rolls back. A PASS is the evidence that marks the
+block's `side_config` `runtime_observed` in `yan_knowledge/catalog/blocks/`.
 
 `run.py` starts the lab server and the agent server when needed, force-loads the
 lab area, sends `/yanlab <experiment> 0 -60 0` and exits 0 on PASS, 1 on FAIL, 2 on
@@ -37,7 +43,8 @@ Manual commands: `uv run python tools/headless_lab/rcon_client.py "yanlab splitt
 
 ## The `/yanlab` command
 
-`/yanlab <experiment|mekanism|splitter> <x> <y> <z>` (permission level 2) starts an
+`/yanlab <experiment|mekanism|splitter|environment|mission> <x> <y> <z>`, `/yanlab industry <x y z> <goal>`
+and `/yanlab machine <x y z> <block id> [recipe id]` (permission level 2) start an
 experiment at explicit coordinates. Without a player, session messages go to the
 server console. `probe` and `functional` need a player's crosshair and are not
 offered headless.

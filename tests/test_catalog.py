@@ -58,7 +58,7 @@ def test_machines_for_recipe_types(catalog):
 def test_only_live_verified_processors_are_plannable(catalog):
     assert catalog.plannable("mekanism:energized_smelter")
     assert catalog.plannable("mekanism:enrichment_chamber")
-    assert not catalog.plannable("mekanism:crusher")
+    assert catalog.plannable("mekanism:crusher")  # verified by the machine probe
     assert not catalog.plannable("mekanism:metallurgic_infuser")
 
 
