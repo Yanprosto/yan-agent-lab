@@ -72,7 +72,18 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "experiment",
-        choices=["experiment", "mekanism", "splitter", "environment", "mission", "machine", "plan", "layout", "module"],
+        choices=[
+            "experiment",
+            "mekanism",
+            "splitter",
+            "environment",
+            "mission",
+            "machine",
+            "plan",
+            "layout",
+            "module",
+            "district",
+        ],
     )
     parser.add_argument("--lab", type=Path, default=Path(os.environ.get("YAN_LAB_DIR", "~/mc-lab")).expanduser())
     parser.add_argument("--timeout", type=float, default=900)
@@ -107,7 +118,7 @@ def main() -> int:
         ax, ay, az = (int(v) for v in args.pos.split())
         commands += volume.build_commands((ax, ay, az))
         commands.append(f"yanlab module {args.pos} {args.spec} {args.volume}")
-    elif args.experiment in ("machine", "plan"):
+    elif args.experiment in ("machine", "plan", "district"):
         commands.append(f"yanlab {args.experiment} {args.pos} {args.spec}")
     else:
         commands.append(f"yanlab {args.experiment} {args.pos}")
