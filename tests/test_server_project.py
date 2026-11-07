@@ -73,10 +73,14 @@ def test_ws_handler_releases_shared_lock_when_session_fails(monkeypatch):
     ws_server._task_in_progress = False
     connection = _Connection({"cmd": "project", "prompt": "a town"})
 
-    with pytest.raises(ConnectionError, match="client disconnected"):
-        asyncio.run(ws_server._handler(cast(ServerConnection, connection), Config()))
+    # Since run logging (v0.7) the handler reports session failures to the client
+    # instead of crashing the server; the lock must still be released.
+    asyncio.run(ws_server._handler(cast(ServerConnection, connection), Config()))
 
     assert ws_server._task_in_progress is False
+    response = json.loads(connection.sent[-1])
+    assert response["type"] == "error"
+    assert "client disconnected" in response["reason"]
 
 
 def test_project_session_streams_component_deltas_without_reasoning(monkeypatch, tmp_path):

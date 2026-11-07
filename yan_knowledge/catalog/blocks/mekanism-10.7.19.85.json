@@ -1,0 +1,129 @@
+{
+ "schema": 1,
+ "mods": {
+  "mekanism": {"version": "10.7.19.85", "jar_sha256": "004dbc9f3106f4d192aeaa1ee1190dd16ec9ca8059ed3d093b80034f4c574f43"},
+  "minecraft": {"version": "1.21.1"}
+ },
+ "evidence_levels": {
+  "source_default": "read from the mod jar (javap or shipped data); a world config or datapack may override it",
+  "runtime_observed": "seen in a live run; runs lists the evidence",
+  "derived": "computed from other facts; derivation says how",
+  "vanilla_fact": "documented vanilla Minecraft behaviour, not yet observed in a YAN run",
+  "unverified": "expected but not yet read or observed; do not plan on it without a check"
+ },
+ "blocks": {
+  "mekanism:energized_smelter": {
+   "roles": ["PROCESSOR"],
+   "recipe_types": ["minecraft:smelting"],
+   "ticks_per_operation": {"value": 200, "evidence": "source_default", "source": "TileEntityEnergizedSmelter constructor (audit 2026-10-11)"},
+   "energy_per_tick_j": {"value": 50, "evidence": "source_default", "source": "UsageConfig.energizedSmelter"},
+   "energy_capacity_j": {"value": 20000, "evidence": "source_default", "source": "StorageConfig.energizedSmelter"},
+   "side_config": {
+    "value": {"ITEM": ["INPUT", "OUTPUT"], "ENERGY": ["INPUT"]},
+    "evidence": "runtime_observed",
+    "runs": ["v2.1 powered multi-cell PASS 2026-11-07", "v3.0 iron processing PASS 2026-11-07", "v4.1 iron works PASS 2026-11-07"]
+   }
+  },
+  "mekanism:enrichment_chamber": {
+   "roles": ["PROCESSOR"],
+   "recipe_types": ["mekanism:enriching"],
+   "ticks_per_operation": {"value": 200, "evidence": "source_default", "source": "TileEntityEnrichmentChamber constructor (javap 2026-11-07)"},
+   "energy_per_tick_j": {"value": 50, "evidence": "source_default", "source": "UsageConfig.enrichmentChamber (javap 2026-11-07)"},
+   "energy_capacity_j": {"value": 20000, "evidence": "source_default", "source": "StorageConfig.enrichmentChamber (javap 2026-11-07)"},
+   "side_config": {
+    "value": {"ITEM": ["INPUT", "OUTPUT"], "ENERGY": ["INPUT"]},
+    "evidence": "runtime_observed",
+    "runs": ["v3.0 iron processing PASS 2026-11-07", "v4.1 iron works PASS 2026-11-07"]
+   }
+  },
+  "mekanism:crusher": {
+   "roles": ["PROCESSOR"],
+   "recipe_types": ["mekanism:crushing"],
+   "ticks_per_operation": {"value": 200, "evidence": "source_default", "source": "TileEntityCrusher constructor (javap 2026-11-07)"},
+   "energy_per_tick_j": {"value": 50, "evidence": "source_default", "source": "UsageConfig.crusher (javap 2026-11-07)"},
+   "energy_capacity_j": {"value": 20000, "evidence": "source_default", "source": "StorageConfig.crusher (javap 2026-11-07)"},
+   "side_config": {
+    "value": {"ITEM": ["INPUT", "OUTPUT"], "ENERGY": ["INPUT"]},
+    "evidence": "unverified",
+    "note": "same machine prefab as the enrichment chamber (TileEntityElectricMachine); confirm in the lab before planning"
+   }
+  },
+  "mekanism:metallurgic_infuser": {
+   "roles": ["PROCESSOR"],
+   "recipe_types": ["mekanism:metallurgic_infusing"],
+   "ticks_per_operation": {"value": 200, "evidence": "source_default", "source": "TileEntityMetallurgicInfuser constructor (javap 2026-11-07)"},
+   "energy_per_tick_j": {"value": 50, "evidence": "source_default", "source": "UsageConfig.metallurgicInfuser (javap 2026-11-07)"},
+   "energy_capacity_j": {"value": 20000, "evidence": "source_default", "source": "StorageConfig.metallurgicInfuser (javap 2026-11-07)"},
+   "side_config": {
+    "value": null,
+    "evidence": "unverified",
+    "note": "has an extra chemical (infusion) input fed from infuse items such as coal; port layout not yet read or observed"
+   }
+  },
+  "mekanism:basic_logistical_transporter": {
+   "roles": ["ITEM_TRANSPORT"],
+   "connection_modes": {"value": ["NORMAL", "PUSH", "PULL", "NONE"], "evidence": "source_default", "source": "ConnectionType enum (audit 2026-10-11)"},
+   "pull_amount": {"value": 1, "evidence": "source_default", "source": "TransporterTier.BASIC (audit 2026-10-11)"},
+   "speed_progress_per_tick": {"value": 5, "evidence": "source_default", "source": "TransporterTier.BASIC; internal progress, 100 per block"},
+   "ticks_per_block": {"value": 20, "evidence": "derived", "derivation": "100 progress per block / speed 5; consistent with environment v1.2 (10-block branch, first item ~200 ticks)"},
+   "extracts_only_in_pull": {
+    "value": true,
+    "evidence": "runtime_observed",
+    "runs": ["v0.5 transporter mode PASS 2026-11-07: NORMAL left source full, PULL emptied it"]
+   }
+  },
+  "mekanism:basic_universal_cable": {
+   "roles": ["ENERGY_TRANSPORT"],
+   "connection_modes": {"value": ["NORMAL", "PUSH", "PULL", "NONE"], "evidence": "source_default", "source": "shared transmitter ConnectionType"},
+   "pull_from_source": {
+    "value": true,
+    "evidence": "runtime_observed",
+    "runs": ["v2.1 powered multi-cell PASS 2026-11-07: smelters reached 8000 J via cable PULL"]
+   }
+  },
+  "mekanism:creative_energy_cube": {
+   "roles": ["POWER_SOURCE"],
+   "placement": {
+    "value": "charged_item_use",
+    "evidence": "runtime_observed",
+    "note": "a cube set as a block starts empty (v2.0 finding); place the filled creative-tab item, with a fake player when headless",
+    "runs": ["v2.1 PASS 2026-11-07 headless (NeoForge fake player)"]
+   },
+   "side_config": {"value": {"ENERGY": ["OUTPUT"]}, "evidence": "runtime_observed", "runs": ["v2.1 PASS 2026-11-07"]},
+   "lab_only": true
+  },
+  "minecraft:chest": {
+   "roles": ["ITEM_BUFFER"],
+   "slots": {"value": 27, "evidence": "vanilla_fact"},
+   "used_as_source_and_sink": {"value": true, "evidence": "runtime_observed", "runs": ["all experiments v0.4-v4.1, 2026-11-07"]}
+  },
+  "minecraft:hopper": {
+   "roles": ["ITEM_TRANSPORT"],
+   "ticks_per_item": {"value": 8, "evidence": "vanilla_fact"},
+   "pushes_toward_facing": {"value": true, "evidence": "runtime_observed", "runs": ["v0.4 PASS 2026-11-07: facing east fed the right sink, west the left"]}
+  }
+ },
+ "observed_recipes": [
+  {
+   "recipe": "mekanism:processing/iron/dust/from_raw_ore",
+   "machine": "mekanism:enrichment_chamber",
+   "ratio": "3 raw iron -> 4 iron dust",
+   "evidence": "runtime_observed",
+   "runs": ["v3.0 PASS 2026-11-07: 18 raw -> 24 dust", "v4.1 PASS 2026-11-07: 54 raw -> 72 dust"]
+  },
+  {
+   "recipe": "mekanism:processing/iron/ingot/from_dust_smelting",
+   "machine": "mekanism:energized_smelter",
+   "ratio": "1 iron dust -> 1 iron ingot",
+   "evidence": "runtime_observed",
+   "runs": ["v3.0 PASS 2026-11-07: 24 dust -> 24 ingots"]
+  },
+  {
+   "recipe": "minecraft:iron_ingot_from_smelting_raw_iron",
+   "machine": "mekanism:energized_smelter",
+   "ratio": "1 raw iron -> 1 iron ingot",
+   "evidence": "runtime_observed",
+   "runs": ["v2.1 PASS 2026-11-07: 24 raw -> 24 ingots"]
+  }
+ ]
+}

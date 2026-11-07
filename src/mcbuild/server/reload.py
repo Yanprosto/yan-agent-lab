@@ -10,21 +10,20 @@ rebuild + Minecraft restart.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
-from pathlib import Path
 import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 
 def _snapshot(root: Path) -> dict[Path, int]:
     result: dict[Path, int] = {}
     for path in root.rglob("*.py"):
-        try:
+        with contextlib.suppress(FileNotFoundError):
             result[path] = path.stat().st_mtime_ns
-        except FileNotFoundError:
-            pass
     return result
 
 

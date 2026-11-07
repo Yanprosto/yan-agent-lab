@@ -8,7 +8,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from mcbuild.server.skill_store import load_skill
+from mcbuild.server.skill_store import load_latest_skill
+
+TWO_BRANCH_FAMILY = "mekanism_two_branch_distribution"
 
 
 @dataclass(frozen=True)
@@ -55,9 +57,9 @@ class SpatialCandidate:
 
 
 def generate_spatial_candidates() -> tuple[list[SpatialCandidate], dict[str, Any] | None]:
-    """Generate rotations, asymmetry and vertical variants from the verified v2 skill."""
+    """Generate rotations, asymmetry and vertical variants from the newest verified skill (v2+)."""
 
-    skill = load_skill("mekanism_two_branch_distribution_v2")
+    skill, _version = load_latest_skill(TWO_BRANCH_FAMILY, min_version=2)
     impl = (skill or {}).get("implementation") or {}
     family = impl.get("family")
     arm_blocks = int(impl.get("arm_blocks", 0) or 0)

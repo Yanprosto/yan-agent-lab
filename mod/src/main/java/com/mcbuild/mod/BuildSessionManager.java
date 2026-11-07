@@ -20,7 +20,10 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -29,6 +32,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.common.util.FakePlayerFactory;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
@@ -66,6 +70,19 @@ public final class BuildSessionManager {
 
     public static synchronized boolean startSplitterExperiment(BlockPos anchor, ServerLevel level, ServerPlayer player) {
         return start("splitter", "", anchor, level, player);
+    }
+
+    public static synchronized boolean startEnvironmentBuild(BlockPos anchor, ServerLevel level, ServerPlayer player) {
+        return start("environment", "", anchor, level, player);
+    }
+
+    public static synchronized boolean startMission(BlockPos anchor, ServerLevel level, ServerPlayer player) {
+        return start("mission", "", anchor, level, player);
+    }
+
+    public static synchronized boolean startIndustry(
+            String goal, BlockPos anchor, ServerLevel level, ServerPlayer player) {
+        return start("industry", goal, anchor, level, player);
     }
 
     private static synchronized boolean start(
@@ -117,13 +134,26 @@ public final class BuildSessionManager {
             this.player = player;
             this.chatPrefix = switch (command) {
                 case "project" -> "[mcbuild-project]";
-                case "probe", "functional", "experiment", "mekanism", "splitter" -> "[yan-agent]";
+                case "probe", "functional", "experiment", "mekanism", "splitter", "environment", "mission", "industry" -> "[yan-agent]";
                 default -> "[mcbuild]";
             };
         }
 
+        /** Sends a message to the requesting player, or to the server console in headless mode. */
+        private void say(String text) {
+            Component message = Component.literal(text);
+            if (player != null) {
+                player.sendSystemMessage(message);
+                return;
+            }
+            MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+            if (server != null) {
+                server.sendSystemMessage(message);
+            }
+        }
+
         public void onChat(String text) {
-            runOnServerThread(() -> player.sendSystemMessage(Component.literal(text)));
+            runOnServerThread(() -> say(text));
         }
 
         public void onBlocks(ProtocolMessages.Blocks blocks) {
@@ -137,8 +167,7 @@ public final class BuildSessionManager {
                         try {
                             state = BlockStateCodec.parse(level.registryAccess(), change.block);
                         } catch (CommandSyntaxException e) {
-                            player.sendSystemMessage(Component.literal(
-                                    chatPrefix + " failed to parse block '" + change.block + "': " + e.getMessage()));
+                            say(chatPrefix + " failed to parse block '" + change.block + "': " + e.getMessage());
                             continue;
                         }
                     }
@@ -161,13 +190,19 @@ public final class BuildSessionManager {
                         case "inspect_blocks" -> inspectBlocks(request);
                         case "read_inventory" -> readInventory(request);
                         case "read_energy" -> readEnergy(request);
+                        case "seed_energy" -> seedEnergy(request);
                         case "seed_item" -> seedItem(request);
                         case "drain_inventory" -> drainInventory(request);
                         case "place_block" -> placeBlock(request);
+                        case "place_mekanism_filled_energy_cube" -> placeMekanismFilledEnergyCube(request);
                         case "remove_block" -> removeBlock(request);
                         case "rollback_session" -> rollbackSession();
                         case "mek_get_transporter_mode" -> mekGetTransporterMode(request);
                         case "mek_set_transporter_mode" -> mekSetTransporterMode(request);
+                        case "mek_set_transmitter_mode" -> mekSetTransmitterMode(request);
+                        case "mek_read_transit" -> mekReadTransit(request);
+                        case "mek_clear_transit" -> mekClearTransit(request);
+                        case "mek_set_side_config" -> mekSetSideConfig(request);
                         default -> throw new IllegalArgumentException("Unsupported action: " + request.action);
                     };
                     sendObservation(request.id, true, result, null);
@@ -185,6 +220,9 @@ public final class BuildSessionManager {
             double reach = 12.0D;
             if (request.args != null && request.args.has("reach")) {
                 reach = Math.max(1.0D, Math.min(64.0D, request.args.get("reach").getAsDouble()));
+            }
+            if (player == null) {
+                throw new IllegalStateException("inspect_target needs a player; not available in headless mode");
             }
             Vec3 start = player.getEyePosition();
             Vec3 end = start.add(player.getLookAngle().scale(reach));
@@ -375,6 +413,273 @@ public final class BuildSessionManager {
             return result;
         }
 
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private JsonObject mekSetSideConfig(ProtocolMessages.Action request) throws Exception {
+            BlockPos pos = resolveRelativePos(request.args);
+            Direction worldSide = requireSide(request.args);
+            if (request.args == null || !request.args.has("transmission") || !request.args.has("mode")) {
+                throw new IllegalArgumentException(
+                        "mek_set_side_config requires args.transmission, args.side and args.mode");
+            }
+
+            BlockEntity be = level.getBlockEntity(pos);
+            if (be == null || !be.getClass().getName().startsWith("mekanism.")) {
+                throw new IllegalStateException("No Mekanism BlockEntity at " + pos.toShortString());
+            }
+
+            Class<?> transmissionClass = Class.forName("mekanism.common.lib.transmitter.TransmissionType");
+            Class<?> dataTypeClass = Class.forName("mekanism.common.tile.component.config.DataType");
+            Class<?> relativeSideClass = Class.forName("mekanism.api.RelativeSide");
+
+            Object transmission = Enum.valueOf(
+                    (Class<? extends Enum>) transmissionClass.asSubclass(Enum.class),
+                    request.args.get("transmission").getAsString().toUpperCase(Locale.ROOT));
+            Object mode = Enum.valueOf(
+                    (Class<? extends Enum>) dataTypeClass.asSubclass(Enum.class),
+                    request.args.get("mode").getAsString().toUpperCase(Locale.ROOT));
+
+            Object facing = be.getClass().getMethod("getDirection").invoke(be);
+            Object relativeSide = relativeSideClass
+                    .getMethod("fromDirections", Direction.class, Direction.class)
+                    .invoke(null, facing, worldSide);
+
+            Object config = be.getClass().getMethod("getConfig").invoke(be);
+            Object configInfo = config.getClass()
+                    .getMethod("getConfig", transmissionClass)
+                    .invoke(config, transmission);
+            if (configInfo == null) {
+                throw new IllegalStateException("Transmission " + transmission + " is not configurable on "
+                        + be.getClass().getName());
+            }
+
+            Object before = configInfo.getClass()
+                    .getMethod("getDataType", relativeSideClass)
+                    .invoke(configInfo, relativeSide);
+
+            Object supported = configInfo.getClass()
+                    .getMethod("supports", dataTypeClass)
+                    .invoke(configInfo, mode);
+            if (supported instanceof Boolean ok && !ok) {
+                throw new IllegalStateException(
+                        "Mode " + mode + " is not supported for " + transmission + " on " + be.getClass().getName());
+            }
+
+            configInfo.getClass()
+                    .getMethod("setDataType", dataTypeClass, relativeSideClass)
+                    .invoke(configInfo, mode, relativeSide);
+
+            config.getClass()
+                    .getMethod("sideChanged", transmissionClass, relativeSideClass)
+                    .invoke(config, transmission, relativeSide);
+
+            Object after = configInfo.getClass()
+                    .getMethod("getDataType", relativeSideClass)
+                    .invoke(configInfo, relativeSide);
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("transmission", ((Enum<?>) transmission).name());
+            result.addProperty("world_side", worldSide.getName());
+            result.addProperty("relative_side", ((Enum<?>) relativeSide).name());
+            result.addProperty("before", String.valueOf(before));
+            result.addProperty("requested", ((Enum<?>) mode).name());
+            result.addProperty("after", String.valueOf(after));
+            result.addProperty("verified", String.valueOf(after).equals(((Enum<?>) mode).name()));
+            result.addProperty("tile_class", be.getClass().getName());
+            return result;
+        }
+
+        private JsonObject mekReadTransit(ProtocolMessages.Action request) throws Exception {
+            JsonArray positions = request.args == null ? null : request.args.getAsJsonArray("positions");
+            if (positions == null) {
+                throw new IllegalArgumentException("mek_read_transit requires args.positions");
+            }
+
+            JsonArray transporters = new JsonArray();
+            JsonArray items = new JsonArray();
+            int totalItems = 0;
+            int stackCount = 0;
+            Set<BlockPos> seen = new HashSet<>();
+
+            for (JsonElement element : positions) {
+                JsonObject rel = element.getAsJsonObject();
+                BlockPos relative = new BlockPos(
+                        rel.get("x").getAsInt(),
+                        rel.get("y").getAsInt(),
+                        rel.get("z").getAsInt());
+                BlockPos pos = anchor.offset(relative);
+                if (!seen.add(pos)) {
+                    continue;
+                }
+
+                Object transmitter = getMekanismTransporter(pos);
+                Object transitObject = transmitter.getClass().getMethod("getTransit").invoke(transmitter);
+                if (!(transitObject instanceof java.util.Collection<?> transit)) {
+                    throw new IllegalStateException("Mekanism getTransit did not return a Collection");
+                }
+
+                JsonObject transporterRow = baseLocationResult(pos);
+                transporterRow.addProperty("stack_count", transit.size());
+                int transporterItems = 0;
+                JsonArray transporterStacks = new JsonArray();
+
+                for (Object stack : transit) {
+                    java.lang.reflect.Field itemStackField = stack.getClass().getField("itemStack");
+                    ItemStack itemStack = (ItemStack) itemStackField.get(stack);
+                    if (itemStack == null || itemStack.isEmpty()) {
+                        continue;
+                    }
+                    int count = itemStack.getCount();
+                    transporterItems += count;
+                    totalItems += count;
+                    stackCount++;
+
+                    JsonObject row = new JsonObject();
+                    row.addProperty("item", BuiltInRegistries.ITEM.getKey(itemStack.getItem()).toString());
+                    row.addProperty("count", count);
+
+                    try {
+                        java.lang.reflect.Field progressField = stack.getClass().getField("progress");
+                        row.addProperty("progress", progressField.getInt(stack));
+                    } catch (NoSuchFieldException ignored) {
+                    }
+
+                    try {
+                        Object pathType = stack.getClass().getMethod("getPathType").invoke(stack);
+                        row.addProperty("path_type", String.valueOf(pathType));
+                    } catch (ReflectiveOperationException ignored) {
+                    }
+
+                    transporterStacks.add(row);
+                    JsonObject flat = row.deepCopy();
+                    flat.addProperty("x", relative.getX());
+                    flat.addProperty("y", relative.getY());
+                    flat.addProperty("z", relative.getZ());
+                    items.add(flat);
+                }
+
+                transporterRow.addProperty("total_items", transporterItems);
+                transporterRow.add("stacks", transporterStacks);
+                transporters.add(transporterRow);
+            }
+
+            JsonObject result = new JsonObject();
+            result.addProperty("available", true);
+            result.addProperty("transporter_count", transporters.size());
+            result.addProperty("stack_count", stackCount);
+            result.addProperty("total_items", totalItems);
+            result.add("transporters", transporters);
+            result.add("items", items);
+            return result;
+        }
+
+        private JsonObject mekClearTransit(ProtocolMessages.Action request) throws Exception {
+            JsonArray positions = request.args == null ? null : request.args.getAsJsonArray("positions");
+            if (positions == null) {
+                throw new IllegalArgumentException("mek_clear_transit requires args.positions");
+            }
+
+            Class<?> managerClass = Class.forName("mekanism.common.content.transporter.TransporterManager");
+            java.lang.reflect.Method managerRemove = null;
+            for (java.lang.reflect.Method method : managerClass.getMethods()) {
+                if ("remove".equals(method.getName()) && method.getParameterCount() == 2) {
+                    managerRemove = method;
+                    break;
+                }
+            }
+            if (managerRemove == null) {
+                throw new IllegalStateException("Could not resolve Mekanism TransporterManager.remove(Level, stack)");
+            }
+
+            int clearedStacks = 0;
+            int clearedItems = 0;
+            JsonArray cleared = new JsonArray();
+            Set<BlockPos> seen = new HashSet<>();
+
+            for (JsonElement element : positions) {
+                JsonObject rel = element.getAsJsonObject();
+                BlockPos relative = new BlockPos(
+                        rel.get("x").getAsInt(),
+                        rel.get("y").getAsInt(),
+                        rel.get("z").getAsInt());
+                BlockPos pos = anchor.offset(relative);
+                if (!seen.add(pos)) {
+                    continue;
+                }
+                if (!agentPlaced.contains(pos)) {
+                    throw new IllegalStateException(
+                            "Refusing to clear transit from transporter not placed by this agent session at "
+                                    + pos.toShortString());
+                }
+
+                Object transmitter = getMekanismTransporter(pos);
+                java.lang.reflect.Field transitField = findField(transmitter.getClass(), "transit");
+                transitField.setAccessible(true);
+                Object mapObject = transitField.get(transmitter);
+                if (!(mapObject instanceof java.util.Map<?, ?> transitMap)) {
+                    throw new IllegalStateException("Mekanism transit field is not a Map");
+                }
+
+                List<Object> ids = new ArrayList<>();
+                List<Object> stacks = new ArrayList<>();
+                for (java.util.Map.Entry<?, ?> entry : transitMap.entrySet()) {
+                    ids.add(entry.getKey());
+                    stacks.add(entry.getValue());
+                }
+
+                for (int i = 0; i < stacks.size(); i++) {
+                    Object stack = stacks.get(i);
+                    Object rawId = ids.get(i);
+                    if (!(rawId instanceof Number number)) {
+                        throw new IllegalStateException("Unexpected Mekanism transit stack id type: " + rawId);
+                    }
+
+                    ItemStack itemStack = (ItemStack) stack.getClass().getField("itemStack").get(stack);
+                    int count = itemStack == null || itemStack.isEmpty() ? 0 : itemStack.getCount();
+
+                    managerRemove.invoke(null, level, stack);
+                    transmitter.getClass().getMethod("deleteStack", int.class)
+                            .invoke(transmitter, number.intValue());
+
+                    clearedStacks++;
+                    clearedItems += count;
+
+                    JsonObject row = new JsonObject();
+                    row.addProperty("x", relative.getX());
+                    row.addProperty("y", relative.getY());
+                    row.addProperty("z", relative.getZ());
+                    row.addProperty("count", count);
+                    if (itemStack != null && !itemStack.isEmpty()) {
+                        row.addProperty("item", BuiltInRegistries.ITEM.getKey(itemStack.getItem()).toString());
+                    }
+                    cleared.add(row);
+                }
+
+                BlockEntity be = level.getBlockEntity(pos);
+                if (be != null) {
+                    be.setChanged();
+                    invokeOptional(be, "sendUpdatePacket", new Class<?>[0], new Object[0]);
+                }
+            }
+
+            JsonObject result = new JsonObject();
+            result.addProperty("cleared_stacks", clearedStacks);
+            result.addProperty("cleared_items", clearedItems);
+            result.add("cleared", cleared);
+            return result;
+        }
+
+        private java.lang.reflect.Field findField(Class<?> type, String name) throws NoSuchFieldException {
+            Class<?> current = type;
+            while (current != null) {
+                try {
+                    return current.getDeclaredField(name);
+                } catch (NoSuchFieldException ignored) {
+                    current = current.getSuperclass();
+                }
+            }
+            throw new NoSuchFieldException(name);
+        }
+
         private JsonObject mekGetTransporterMode(ProtocolMessages.Action request) throws Exception {
             BlockPos pos = resolveRelativePos(request.args);
             Direction side = requireSide(request.args);
@@ -391,6 +696,59 @@ public final class BuildSessionManager {
         }
 
         @SuppressWarnings({"unchecked", "rawtypes"})
+        private JsonObject mekSetTransmitterMode(ProtocolMessages.Action request) throws Exception {
+            BlockPos pos = resolveRelativePos(request.args);
+            Direction side = requireSide(request.args);
+            if (request.args == null || !request.args.has("mode")) {
+                throw new IllegalArgumentException("mek_set_transmitter_mode requires args.mode");
+            }
+
+            BlockEntity be = level.getBlockEntity(pos);
+            if (be == null || !be.getClass().getName().startsWith("mekanism.")) {
+                throw new IllegalStateException("No Mekanism transmitter BlockEntity at " + pos.toShortString());
+            }
+
+            Object transmitter = be.getClass().getMethod("getTransmitter").invoke(be);
+            String requested = request.args.get("mode").getAsString().toUpperCase(Locale.ROOT);
+
+            Class<?> connectionTypeClass = Class.forName("mekanism.common.lib.transmitter.ConnectionType");
+            Object mode = Enum.valueOf(
+                    (Class<? extends Enum>) connectionTypeClass.asSubclass(Enum.class),
+                    requested);
+
+            Object before = transmitter.getClass()
+                    .getMethod("getConnectionTypeRaw", Direction.class)
+                    .invoke(transmitter, side);
+
+            transmitter.getClass()
+                    .getMethod("setConnectionTypeRaw", Direction.class, connectionTypeClass)
+                    .invoke(transmitter, side, mode);
+
+            invokeRequired(transmitter, "onModeChange", new Class<?>[] {Direction.class}, new Object[] {side});
+            invokeRequired(transmitter, "refreshConnections", new Class<?>[0], new Object[0]);
+            invokeRequired(transmitter, "notifyTileChange", new Class<?>[0], new Object[0]);
+            invokeOptional(be, "sendUpdatePacket", new Class<?>[0], new Object[0]);
+
+            Object after = transmitter.getClass()
+                    .getMethod("getConnectionTypeRaw", Direction.class)
+                    .invoke(transmitter, side);
+            String afterName = ((Enum<?>) after).name();
+            if (!requested.equals(afterName)) {
+                throw new IllegalStateException(
+                        "Mekanism transmitter mode readback mismatch: requested="
+                                + requested + " actual=" + afterName);
+            }
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("side", side.getName());
+            result.addProperty("before", ((Enum<?>) before).name());
+            result.addProperty("requested", requested);
+            result.addProperty("after", afterName);
+            result.addProperty("verified", true);
+            result.addProperty("transmitter_class", transmitter.getClass().getName());
+            return result;
+        }
+
         private JsonObject mekSetTransporterMode(ProtocolMessages.Action request) throws Exception {
             BlockPos pos = resolveRelativePos(request.args);
             Direction side = requireSide(request.args);
@@ -473,6 +831,97 @@ public final class BuildSessionManager {
             }
         }
 
+        private JsonObject seedEnergy(ProtocolMessages.Action request) throws Exception {
+            BlockPos pos = resolveRelativePos(request.args);
+            Direction side = parseOptionalSide(request.args);
+            if (!agentPlaced.contains(pos)) {
+                throw new IllegalStateException(
+                        "Refusing to seed energy into block not placed by this agent session at "
+                                + pos.toShortString());
+            }
+            if (request.args == null || !request.args.has("amount")) {
+                throw new IllegalArgumentException("seed_energy requires args.amount");
+            }
+
+            long requested = request.args.get("amount").getAsLong();
+            if (requested <= 0) {
+                throw new IllegalArgumentException("seed_energy amount must be > 0");
+            }
+
+            IEnergyStorage storage = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, side);
+            if (storage == null) {
+                throw new IllegalStateException("No energy storage at " + pos.toShortString());
+            }
+
+            long capabilityBefore = storage.getEnergyStored();
+            long reportedAccepted = 0;
+            long remaining = requested;
+            while (remaining > 0) {
+                int batch = (int) Math.min(Integer.MAX_VALUE, remaining);
+                int accepted = storage.receiveEnergy(batch, false);
+                if (accepted <= 0) {
+                    break;
+                }
+                reportedAccepted += accepted;
+                remaining -= accepted;
+            }
+            long capabilityAfter = storage.getEnergyStored();
+
+            boolean usedMekanismDirectSet = false;
+            long mekanismBefore = -1;
+            long mekanismAfter = -1;
+
+            BlockEntity be = level.getBlockEntity(pos);
+            if (be != null && be.getClass().getName().startsWith("mekanism.")) {
+                try {
+                    Object container = be.getClass().getMethod("getEnergyContainer").invoke(be);
+                    if (container != null) {
+                        java.lang.reflect.Method getEnergy = container.getClass().getMethod("getEnergy");
+                        mekanismBefore = ((Number) getEnergy.invoke(container)).longValue();
+
+                        if (mekanismBefore <= 0) {
+                            // Mekanism 1.21.x IEnergyContainer#setEnergy(long).
+                            java.lang.reflect.Method setEnergy =
+                                    container.getClass().getMethod("setEnergy", long.class);
+                            setEnergy.invoke(container, requested);
+                            usedMekanismDirectSet = true;
+                            be.setChanged();
+                            invokeOptional(be, "sendUpdatePacket", new Class<?>[0], new Object[0]);
+                        }
+
+                        mekanismAfter = ((Number) getEnergy.invoke(container)).longValue();
+                    }
+                } catch (NoSuchMethodException ignored) {
+                    // Generic non-Mekanism container: capability path above remains authoritative.
+                }
+            }
+
+            IEnergyStorage verify = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, side);
+            long capabilityVerified = verify == null ? 0 : verify.getEnergyStored();
+            long authoritativeAfter = mekanismAfter >= 0 ? mekanismAfter : capabilityVerified;
+            long authoritativeBefore = mekanismBefore >= 0 ? mekanismBefore : capabilityBefore;
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("side", side == null ? "unsided" : side.getName());
+            result.addProperty("requested", requested);
+            result.addProperty("capability_before", capabilityBefore);
+            result.addProperty("capability_after", capabilityVerified);
+            result.addProperty("reported_accepted", reportedAccepted);
+            result.addProperty("mekanism_before", mekanismBefore);
+            result.addProperty("mekanism_after", mekanismAfter);
+            result.addProperty("used_mekanism_direct_set", usedMekanismDirectSet);
+            result.addProperty("verified_increase", authoritativeAfter > authoritativeBefore);
+
+            if (authoritativeAfter <= authoritativeBefore) {
+                throw new IllegalStateException(
+                        "seed_energy failed to increase stored energy at " + pos.toShortString()
+                                + " capability=" + capabilityBefore + "->" + capabilityVerified
+                                + " mekanism=" + mekanismBefore + "->" + mekanismAfter
+                                + " reportedAccepted=" + reportedAccepted);
+            }
+            return result;
+        }
+
         private JsonObject readEnergy(ProtocolMessages.Action request) {
             BlockPos pos = resolveRelativePos(request.args);
             Direction side = parseOptionalSide(request.args);
@@ -494,6 +943,88 @@ public final class BuildSessionManager {
             result.addProperty("capacity", storage.getMaxEnergyStored());
             result.addProperty("can_extract", storage.canExtract());
             result.addProperty("can_receive", storage.canReceive());
+            return result;
+        }
+
+        private JsonObject placeMekanismFilledEnergyCube(ProtocolMessages.Action request) throws Exception {
+            BlockPos pos = resolveRelativePos(request.args);
+            BlockState before = level.getBlockState(pos);
+            if (!before.isAir()) {
+                throw new IllegalStateException(
+                        "Refusing to overwrite non-air block at " + pos.toShortString() + ": "
+                                + BuiltInRegistries.BLOCK.getKey(before.getBlock()));
+            }
+
+            // Build exactly the charged Creative Energy Cube variant exposed by Mekanism's creative tab:
+            // StorageUtils.getFilledEnergyVariant(ItemBlockEnergyCube.withCreativeSideConfig(ALL_OUTPUT))
+            Class<?> itemBlockEnergyCube = Class.forName("mekanism.common.item.block.ItemBlockEnergyCube");
+            Object allOutput = itemBlockEnergyCube.getField("ALL_OUTPUT").get(null);
+
+            java.lang.reflect.Method withCreativeSideConfig = null;
+            for (java.lang.reflect.Method method : itemBlockEnergyCube.getMethods()) {
+                if ("withCreativeSideConfig".equals(method.getName()) && method.getParameterCount() == 1) {
+                    withCreativeSideConfig = method;
+                    break;
+                }
+            }
+            if (withCreativeSideConfig == null) {
+                throw new IllegalStateException("Could not resolve ItemBlockEnergyCube.withCreativeSideConfig");
+            }
+
+            ItemStack configured = (ItemStack) withCreativeSideConfig.invoke(null, allOutput);
+            Class<?> storageUtils = Class.forName("mekanism.common.util.StorageUtils");
+            ItemStack filled = (ItemStack) storageUtils
+                    .getMethod("getFilledEnergyVariant", ItemStack.class)
+                    .invoke(null, configured);
+
+            // Headless runs have no player: place through NeoForge's fake player instead.
+            ServerPlayer actor = player != null ? player : FakePlayerFactory.getMinecraft(level);
+            ItemStack previousHand = actor.getItemInHand(InteractionHand.MAIN_HAND).copy();
+            try {
+                actor.setItemInHand(InteractionHand.MAIN_HAND, filled.copy());
+                BlockHitResult hit = new BlockHitResult(
+                        Vec3.atCenterOf(pos),
+                        Direction.UP,
+                        pos,
+                        false);
+                UseOnContext context = new UseOnContext(actor, InteractionHand.MAIN_HAND, hit);
+                InteractionResult placed = actor.getItemInHand(InteractionHand.MAIN_HAND).useOn(context);
+                if (!placed.consumesAction() || level.getBlockState(pos).isAir()) {
+                    throw new IllegalStateException(
+                            "Charged Creative Energy Cube item placement failed at " + pos.toShortString()
+                                    + " result=" + placed);
+                }
+            } finally {
+                actor.setItemInHand(InteractionHand.MAIN_HAND, previousHand);
+            }
+
+            BlockState after = level.getBlockState(pos);
+            ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(after.getBlock());
+            if (!"mekanism:creative_energy_cube".equals(blockId.toString())) {
+                throw new IllegalStateException(
+                        "Expected mekanism:creative_energy_cube after item placement, got " + blockId);
+            }
+            agentPlaced.add(pos.immutable());
+
+            BlockEntity be = level.getBlockEntity(pos);
+            long internalEnergy = -1;
+            if (be != null) {
+                try {
+                    Object container = be.getClass().getMethod("getEnergyContainer").invoke(be);
+                    internalEnergy = ((Number) container.getClass().getMethod("getEnergy").invoke(container)).longValue();
+                } catch (ReflectiveOperationException ignored) {
+                }
+            }
+
+            JsonObject result = baseLocationResult(pos);
+            result.addProperty("placed", blockId.toString());
+            result.addProperty("variant", "mekanism_creative_tab_filled_all_output");
+            result.addProperty("internal_energy", internalEnergy);
+            result.addProperty("tracked_for_rollback", true);
+            if (internalEnergy <= 0) {
+                throw new IllegalStateException(
+                        "Filled Creative Energy Cube placed but internal energy is not positive: " + internalEnergy);
+            }
             return result;
         }
 
@@ -647,12 +1178,12 @@ public final class BuildSessionManager {
         }
 
         public void onFinish(String summary) {
-            runOnServerThread(() -> player.sendSystemMessage(Component.literal(chatPrefix + " " + summary)));
+            runOnServerThread(() -> say(chatPrefix + " " + summary));
             clear(this);
         }
 
         public void onError(String reason) {
-            runOnServerThread(() -> player.sendSystemMessage(Component.literal(chatPrefix + " error: " + reason)));
+            runOnServerThread(() -> say(chatPrefix + " error: " + reason));
             clear(this);
         }
 

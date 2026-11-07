@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import functools
 import json
 from typing import Any
@@ -13,12 +14,19 @@ from websockets.asyncio.server import ServerConnection, serve
 
 from mcbuild.config import Config
 from mcbuild.server import protocol
+from mcbuild.server.environment_planner import BranchRoute, generate_route_plans, replan_failed_branch
+from mcbuild.server.industry_session import run_industry_session
+from mcbuild.server.iron_works_session import run_iron_works_session
+from mcbuild.server.mission_v21 import run_powered_mission_session
 from mcbuild.server.project_session import run_project_session
 from mcbuild.server.run_logger import LoggedConnection, RunRecorder
 from mcbuild.server.session import run_build_session
-from mcbuild.server.skill_store import list_skills, save_skill
+from mcbuild.server.skill_store import list_skills, load_latest_skill, save_skill
 from mcbuild.server.spatial_search import SpatialCandidate, generate_spatial_candidates
 from mcbuild.server.topology_search import TopologyCandidate, generate_two_branch_candidates
+
+# Sessions talk to the mod through the raw socket or the run-logging wrapper.
+Connection = ServerConnection | LoggedConnection
 
 # Only one task runs at a time in this version; a second connection while a task is in
 # flight is rejected outright rather than queued.
@@ -37,8 +45,24 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
 
     command = request.get("cmd")
     prompt = request.get("prompt", "")
-    if command not in {"build", "project", "probe", "functional", "experiment", "mekanism", "splitter"}:
-        await connection.send(protocol.error('Expected {"cmd": "build|project|probe|functional|experiment|mekanism|splitter", ...}.'))
+    if command not in {
+        "build",
+        "project",
+        "probe",
+        "functional",
+        "experiment",
+        "mekanism",
+        "splitter",
+        "environment",
+        "mission",
+        "industry",
+    }:
+        await connection.send(
+            protocol.error(
+                'Expected {"cmd": "build|project|probe|functional|experiment|mekanism|splitter|'
+                'environment|mission|industry", ...}.'
+            )
+        )
         return
     if command in {"build", "project"} and (not isinstance(prompt, str) or not prompt.strip()):
         await connection.send(protocol.error('Expected non-empty "prompt" for build/project.'))
@@ -66,16 +90,29 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
             await _run_experiment_session(logged_connection)
         elif command == "mekanism":
             await _run_mekanism_experiment_session(logged_connection)
-        else:
+        elif command == "splitter":
             await _run_spatial_search_session(logged_connection)
+        elif command == "environment":
+            await _run_environment_build_session(logged_connection)
+        elif command == "mission":
+            await run_powered_mission_session(logged_connection)
+        else:
+            normalized_goal = " ".join(str(prompt).lower().strip().split())
+            iron_works_aliases = (
+                "железный завод",
+                "большой железный завод",
+                "iron works",
+                "ironworks",
+                "iron factory",
+            )
+            if any(alias in normalized_goal for alias in iron_works_aliases):
+                await run_iron_works_session(prompt, logged_connection)
+            else:
+                await run_industry_session(prompt, logged_connection)
     except Exception as exc:
         recorder.fail_from_exception(exc)
-        try:
-            await logged_connection.send(protocol.error(
-                f"Unhandled server exception: {exc.__class__.__name__}: {exc}"
-            ))
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            await logged_connection.send(protocol.error(f"Unhandled server exception: {exc.__class__.__name__}: {exc}"))
     finally:
         _task_in_progress = False
         publish = await asyncio.to_thread(recorder.finalize_and_publish)
@@ -85,14 +122,11 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
                 f"commit={publish.get('commit') or '-'} branch={publish.get('branch')}"
             )
         else:
-            print(
-                f"[yan-runtime] local-only {recorder.run_id}: "
-                f"{publish.get('reason')} ({publish.get('run_dir')})"
-            )
+            print(f"[yan-runtime] local-only {recorder.run_id}: {publish.get('reason')} ({publish.get('run_dir')})")
 
 
 async def _action(
-    connection: ServerConnection,
+    connection: Connection,
     request_id: str,
     action_name: str,
     args: dict[str, Any] | None = None,
@@ -112,15 +146,13 @@ async def _action(
     if message.get("type") != "observation":
         raise RuntimeError(f"{action_name} expected observation, got {message.get('type')!r}")
     if message.get("id") != request_id:
-        raise RuntimeError(
-            f"{action_name} observation id mismatch: expected {request_id!r}, got {message.get('id')!r}"
-        )
+        raise RuntimeError(f"{action_name} observation id mismatch: expected {request_id!r}, got {message.get('id')!r}")
     if not message.get("ok", False):
         raise RuntimeError(f"{action_name} failed: {message.get('error') or message}")
     return message.get("result") or {}
 
 
-async def _run_probe_session(connection: ServerConnection) -> None:
+async def _run_probe_session(connection: Connection) -> None:
     """Two-step live observation: target under crosshair, then its 6-neighbourhood."""
     await connection.send(protocol.hello("yan-probe-v0.2"))
     await connection.send(protocol.chat("[yan-agent] probe v0.2: looking at the block under your crosshair..."))
@@ -133,10 +165,13 @@ async def _run_probe_session(connection: ServerConnection) -> None:
 
     target = first.get("target") or {}
     rx, ry, rz = int(target.get("x", 0)), int(target.get("y", 0)), int(target.get("z", 0))
-    await connection.send(protocol.chat(
-        f"[yan-agent] target: {target.get('block')} world=({target.get('world_x')},{target.get('world_y')},{target.get('world_z')}) "
-        f"be={target.get('block_entity') or '-'} face={target.get('hit_face') or '-'}"
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] target: {target.get('block')} "
+            f"world=({target.get('world_x')},{target.get('world_y')},{target.get('world_z')}) "
+            f"be={target.get('block_entity') or '-'} face={target.get('hit_face') or '-'}"
+        )
+    )
 
     positions = [
         {"x": rx, "y": ry, "z": rz},
@@ -157,21 +192,22 @@ async def _run_probe_session(connection: ServerConnection) -> None:
     blocks = second.get("blocks") or []
     non_air = [b for b in blocks if not b.get("is_air", False)]
     summary = "; ".join(
-        f"({b.get('x')},{b.get('y')},{b.get('z')})={b.get('block')} be={b.get('block_entity') or '-'}"
-        for b in blocks
+        f"({b.get('x')},{b.get('y')},{b.get('z')})={b.get('block')} be={b.get('block_entity') or '-'}" for b in blocks
     )
     await connection.send(protocol.chat(f"[yan-agent] neighbourhood: {summary}"))
-    await connection.send(protocol.finish(
-        f"probe v0.2 PASS: 2 ACTION/OBSERVATION rounds, target={target.get('block')}, nonAir={len(non_air)}/7"
-    ))
+    await connection.send(
+        protocol.finish(
+            f"probe v0.2 PASS: 2 ACTION/OBSERVATION rounds, target={target.get('block')}, nonAir={len(non_air)}/7"
+        )
+    )
 
 
-async def _run_functional_session(connection: ServerConnection) -> None:
+async def _run_functional_session(connection: Connection) -> None:
     """Deterministic v0.3 self-test for the generic functional world API."""
     await connection.send(protocol.hello("yan-functional-v0.3"))
-    await connection.send(protocol.chat(
-        "[yan-agent] functional v0.3: inspect -> inventory -> energy -> wait -> safe place/remove"
-    ))
+    await connection.send(
+        protocol.chat("[yan-agent] functional v0.3: inspect -> inventory -> energy -> wait -> safe place/remove")
+    )
 
     rounds = 0
     try:
@@ -179,10 +215,13 @@ async def _run_functional_session(connection: ServerConnection) -> None:
         rounds += 1
         target = target_result.get("target") or {}
         rx, ry, rz = int(target["x"]), int(target["y"]), int(target["z"])
-        await connection.send(protocol.chat(
-            f"[yan-agent] target={target.get('block')} world=({target.get('world_x')},{target.get('world_y')},{target.get('world_z')}) "
-            f"be={target.get('block_entity') or '-'}"
-        ))
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] target={target.get('block')} "
+                f"world=({target.get('world_x')},{target.get('world_y')},{target.get('world_z')}) "
+                f"be={target.get('block_entity') or '-'}"
+            )
+        )
 
         inv = await _action(
             connection,
@@ -191,10 +230,12 @@ async def _run_functional_session(connection: ServerConnection) -> None:
             {"x": rx, "y": ry, "z": rz},
         )
         rounds += 1
-        await connection.send(protocol.chat(
-            f"[yan-agent] inventory: available={inv.get('available')} slots={inv.get('slots')} "
-            f"totalItems={inv.get('total_items')}"
-        ))
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] inventory: available={inv.get('available')} slots={inv.get('slots')} "
+                f"totalItems={inv.get('total_items')}"
+            )
+        )
 
         energy = await _action(
             connection,
@@ -203,11 +244,13 @@ async def _run_functional_session(connection: ServerConnection) -> None:
             {"x": rx, "y": ry, "z": rz},
         )
         rounds += 1
-        await connection.send(protocol.chat(
-            f"[yan-agent] energy: available={energy.get('available')} "
-            f"stored={energy.get('energy')}/{energy.get('capacity')} "
-            f"extract={energy.get('can_extract')} receive={energy.get('can_receive')}"
-        ))
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] energy: available={energy.get('available')} "
+                f"stored={energy.get('energy')}/{energy.get('capacity')} "
+                f"extract={energy.get('can_extract')} receive={energy.get('can_receive')}"
+            )
+        )
 
         waited = await _action(
             connection,
@@ -217,10 +260,12 @@ async def _run_functional_session(connection: ServerConnection) -> None:
             timeout=5.0,
         )
         rounds += 1
-        await connection.send(protocol.chat(
-            f"[yan-agent] wait: requested={waited.get('requested_ticks')} "
-            f"elapsed={waited.get('elapsed_ticks')} real server ticks"
-        ))
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] wait: requested={waited.get('requested_ticks')} "
+                f"elapsed={waited.get('elapsed_ticks')} real server ticks"
+            )
+        )
 
         neighbours = [
             {"x": rx + 1, "y": ry, "z": rz},
@@ -252,9 +297,9 @@ async def _run_functional_session(connection: ServerConnection) -> None:
             {**pos, "block": "minecraft:glass"},
         )
         rounds += 1
-        await connection.send(protocol.chat(
-            f"[yan-agent] place: {placed.get('placed')} at rel=({pos['x']},{pos['y']},{pos['z']})"
-        ))
+        await connection.send(
+            protocol.chat(f"[yan-agent] place: {placed.get('placed')} at rel=({pos['x']},{pos['y']},{pos['z']})")
+        )
 
         verify_place = await _action(
             connection,
@@ -292,18 +337,20 @@ async def _run_functional_session(connection: ServerConnection) -> None:
         await connection.send(protocol.error(f"functional v0.3 FAIL after {rounds} rounds: {exc}"))
         return
 
-    await connection.send(protocol.finish(
-        "functional v0.3 PASS: "
-        f"{rounds} ACTION/OBSERVATION rounds; "
-        f"inventoryAvailable={inv.get('available')}; "
-        f"energyAvailable={energy.get('available')}; "
-        f"waitTicks={waited.get('elapsed_ticks')}; "
-        "placeVerified=true; removeVerified=true"
-    ))
+    await connection.send(
+        protocol.finish(
+            "functional v0.3 PASS: "
+            f"{rounds} ACTION/OBSERVATION rounds; "
+            f"inventoryAvailable={inv.get('available')}; "
+            f"energyAvailable={energy.get('available')}; "
+            f"waitTicks={waited.get('elapsed_ticks')}; "
+            "placeVerified=true; removeVerified=true"
+        )
+    )
 
 
 async def _build_routing_variant(
-    connection: ServerConnection,
+    connection: Connection,
     *,
     name: str,
     hopper_facing: str,
@@ -314,9 +361,9 @@ async def _build_routing_variant(
     left = {"x": 3, "y": 1, "z": 0}
     right = {"x": 5, "y": 1, "z": 0}
 
-    await connection.send(protocol.chat(
-        f"[yan-agent] {name}: BUILD source chest + hopper[{hopper_facing}] + two sinks"
-    ))
+    await connection.send(
+        protocol.chat(f"[yan-agent] {name}: BUILD source chest + hopper[{hopper_facing}] + two sinks")
+    )
 
     placements = [
         ("source", source, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
@@ -338,9 +385,7 @@ async def _build_routing_variant(
         "seed_item",
         {**source, "item": "minecraft:raw_iron", "count": 6},
     )
-    await connection.send(protocol.chat(
-        f"[yan-agent] {name}: SEED inserted={seeded.get('inserted')}/6 raw iron"
-    ))
+    await connection.send(protocol.chat(f"[yan-agent] {name}: SEED inserted={seeded.get('inserted')}/6 raw iron"))
 
     waited = await _action(
         connection,
@@ -349,9 +394,7 @@ async def _build_routing_variant(
         {"ticks": 120},
         timeout=12.0,
     )
-    await connection.send(protocol.chat(
-        f"[yan-agent] {name}: WAIT elapsed={waited.get('elapsed_ticks')} ticks"
-    ))
+    await connection.send(protocol.chat(f"[yan-agent] {name}: WAIT elapsed={waited.get('elapsed_ticks')} ticks"))
 
     src = await _action(connection, f"{name}-read-source", "read_inventory", source)
     left_inv = await _action(connection, f"{name}-read-left", "read_inventory", left)
@@ -360,7 +403,7 @@ async def _build_routing_variant(
 
 
 async def _cleanup_routing_variant(
-    connection: ServerConnection,
+    connection: Connection,
     *,
     name: str,
     source: dict[str, int],
@@ -375,24 +418,27 @@ async def _cleanup_routing_variant(
             "drain_inventory",
             pos,
         )
-        await connection.send(protocol.chat(
-            f"[yan-agent] {name}: RESET drain {label} removed={drained.get('removed_total')}"
-        ))
+        await connection.send(
+            protocol.chat(f"[yan-agent] {name}: RESET drain {label} removed={drained.get('removed_total')}")
+        )
 
     rolled = await _action(connection, f"{name}-rollback", "rollback_session", {})
-    await connection.send(protocol.chat(
-        f"[yan-agent] {name}: ROLLBACK removed={rolled.get('removed')} "
-        f"trackedAfter={rolled.get('tracked_after')}"
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] {name}: ROLLBACK removed={rolled.get('removed')} trackedAfter={rolled.get('tracked_after')}"
+        )
+    )
 
 
-async def _run_experiment_session(connection: ServerConnection) -> None:
+async def _run_experiment_session(connection: Connection) -> None:
     """v0.4: first autonomous build-test-reject-rollback-mutate-retry loop."""
     await connection.send(protocol.hello("yan-experiment-v0.4"))
-    await connection.send(protocol.chat(
-        "[yan-agent] experiment v0.4: objective = route all 6 raw iron to LEFT sink; "
-        "agent will try variants, score them, rollback failures, then retry."
-    ))
+    await connection.send(
+        protocol.chat(
+            "[yan-agent] experiment v0.4: objective = route all 6 raw iron to LEFT sink; "
+            "agent will try variants, score them, rollback failures, then retry."
+        )
+    )
 
     source = {"x": 4, "y": 2, "z": 0}
     left = {"x": 3, "y": 1, "z": 0}
@@ -424,9 +470,9 @@ async def _run_experiment_session(connection: ServerConnection) -> None:
         accepted: dict[str, Any] | None = None
 
         for index, (name, facing) in enumerate(variants, start=1):
-            await connection.send(protocol.chat(
-                f"[yan-agent] TRY {index}/{len(variants)} {name}: hopper facing={facing}"
-            ))
+            await connection.send(
+                protocol.chat(f"[yan-agent] TRY {index}/{len(variants)} {name}: hopper facing={facing}")
+            )
             observed = await _build_routing_variant(connection, name=name, hopper_facing=facing)
 
             source_n = int(observed["source"].get("total_items") or 0)
@@ -450,49 +496,45 @@ async def _run_experiment_session(connection: ServerConnection) -> None:
             }
             history.append(row)
 
-            await connection.send(protocol.chat(
-                f"[yan-agent] OBSERVE {name}: source={source_n} left={left_n} right={right_n} "
-                f"total={total} conserved={conserved} score={score}"
-            ))
+            await connection.send(
+                protocol.chat(
+                    f"[yan-agent] OBSERVE {name}: source={source_n} left={left_n} right={right_n} "
+                    f"total={total} conserved={conserved} score={score}"
+                )
+            )
 
             if passed:
-                await connection.send(protocol.chat(
-                    f"[yan-agent] ACCEPT {name}: objective satisfied."
-                ))
+                await connection.send(protocol.chat(f"[yan-agent] ACCEPT {name}: objective satisfied."))
                 accepted = row
-                await _cleanup_routing_variant(
-                    connection, name=name, source=source, left=left, right=right
-                )
+                await _cleanup_routing_variant(connection, name=name, source=source, left=left, right=right)
                 break
 
-            await connection.send(protocol.chat(
-                f"[yan-agent] REJECT {name}: objective failed; rolling back before mutation."
-            ))
-            await _cleanup_routing_variant(
-                connection, name=name, source=source, left=left, right=right
+            await connection.send(
+                protocol.chat(f"[yan-agent] REJECT {name}: objective failed; rolling back before mutation.")
             )
+            await _cleanup_routing_variant(connection, name=name, source=source, left=left, right=right)
 
         if accepted is None:
             raise RuntimeError(f"no routing variant satisfied objective; history={history}")
 
     except (RuntimeError, KeyError, TypeError, ValueError) as exc:
         # Best-effort world cleanup even when an intermediate action failed.
-        try:
+        with contextlib.suppress(RuntimeError):
             await _action(connection, "exp-emergency-rollback", "rollback_session", {})
-        except RuntimeError:
-            pass
         await connection.send(protocol.error(f"experiment v0.4 FAIL: {exc}"))
         return
 
-    await connection.send(protocol.finish(
-        "experiment v0.4 PASS: autonomous loop completed; "
-        f"tried={len(history)}; accepted={accepted['name']}; "
-        f"history={history}; worldClean=true"
-    ))
+    await connection.send(
+        protocol.finish(
+            "experiment v0.4 PASS: autonomous loop completed; "
+            f"tried={len(history)}; accepted={accepted['name']}; "
+            f"history={history}; worldClean=true"
+        )
+    )
 
 
 async def _build_mekanism_variant(
-    connection: ServerConnection,
+    connection: Connection,
     *,
     name: str,
     input_mode: str,
@@ -502,9 +544,9 @@ async def _build_mekanism_variant(
     transporter = {"x": 4, "y": 1, "z": 0}
     sink = {"x": 4, "y": 0, "z": 0}
 
-    await connection.send(protocol.chat(
-        f"[yan-agent] {name}: BUILD chest -> logistical transporter -> chest; inputMode={input_mode}"
-    ))
+    await connection.send(
+        protocol.chat(f"[yan-agent] {name}: BUILD chest -> logistical transporter -> chest; inputMode={input_mode}")
+    )
 
     placements = [
         ("source", source, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
@@ -542,10 +584,12 @@ async def _build_mekanism_variant(
         "mek_set_transporter_mode",
         {**transporter, "side": "down", "mode": "NORMAL"},
     )
-    await connection.send(protocol.chat(
-        f"[yan-agent] {name}: CONFIG up={set_mode.get('after')} verified={set_mode.get('verified')} "
-        f"down={down_mode.get('after')}"
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] {name}: CONFIG up={set_mode.get('after')} verified={set_mode.get('verified')} "
+            f"down={down_mode.get('after')}"
+        )
+    )
 
     readback = await _action(
         connection,
@@ -562,9 +606,7 @@ async def _build_mekanism_variant(
         "seed_item",
         {**source, "item": "minecraft:raw_iron", "count": 6},
     )
-    await connection.send(protocol.chat(
-        f"[yan-agent] {name}: SEED inserted={seeded.get('inserted')}/6 raw iron"
-    ))
+    await connection.send(protocol.chat(f"[yan-agent] {name}: SEED inserted={seeded.get('inserted')}/6 raw iron"))
 
     waited = await _action(
         connection,
@@ -573,9 +615,7 @@ async def _build_mekanism_variant(
         {"ticks": 160},
         timeout=15.0,
     )
-    await connection.send(protocol.chat(
-        f"[yan-agent] {name}: WAIT elapsed={waited.get('elapsed_ticks')} ticks"
-    ))
+    await connection.send(protocol.chat(f"[yan-agent] {name}: WAIT elapsed={waited.get('elapsed_ticks')} ticks"))
 
     src = await _action(connection, f"{name}-read-source", "read_inventory", source)
     dst = await _action(connection, f"{name}-read-sink", "read_inventory", sink)
@@ -587,7 +627,7 @@ async def _build_mekanism_variant(
 
 
 async def _cleanup_mekanism_variant(
-    connection: ServerConnection,
+    connection: Connection,
     *,
     name: str,
 ) -> None:
@@ -602,27 +642,29 @@ async def _cleanup_mekanism_variant(
                 "drain_inventory",
                 pos,
             )
-            await connection.send(protocol.chat(
-                f"[yan-agent] {name}: RESET drain {label} removed={drained.get('removed_total')}"
-            ))
+            await connection.send(
+                protocol.chat(f"[yan-agent] {name}: RESET drain {label} removed={drained.get('removed_total')}")
+            )
         except RuntimeError as exc:
-            await connection.send(protocol.chat(
-                f"[yan-agent] {name}: RESET drain {label} skipped: {exc}"
-            ))
+            await connection.send(protocol.chat(f"[yan-agent] {name}: RESET drain {label} skipped: {exc}"))
 
     rolled = await _action(connection, f"{name}-rollback", "rollback_session", {})
-    await connection.send(protocol.chat(
-        f"[yan-agent] {name}: ROLLBACK removed={rolled.get('removed')} trackedAfter={rolled.get('tracked_after')}"
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] {name}: ROLLBACK removed={rolled.get('removed')} trackedAfter={rolled.get('tracked_after')}"
+        )
+    )
 
 
-async def _run_mekanism_experiment_session(connection: ServerConnection) -> None:
+async def _run_mekanism_experiment_session(connection: Connection) -> None:
     """v0.5: mutate real Mekanism transporter mode based on live item-flow feedback."""
     await connection.send(protocol.hello("yan-mekanism-v0.5"))
-    await connection.send(protocol.chat(
-        "[yan-agent] Mekanism v0.5 objective: move all 6 raw iron from SOURCE to SINK. "
-        "Agent will test NORMAL, reject it if no extraction occurs, rollback, mutate input side to PULL, and retry."
-    ))
+    await connection.send(
+        protocol.chat(
+            "[yan-agent] Mekanism v0.5 objective: move all 6 raw iron from SOURCE to SINK. "
+            "Agent will test NORMAL, reject it if no extraction occurs, rollback, mutate input side to PULL, and retry."
+        )
+    )
 
     source = {"x": 4, "y": 2, "z": 0}
     transporter = {"x": 4, "y": 1, "z": 0}
@@ -649,9 +691,9 @@ async def _run_mekanism_experiment_session(connection: ServerConnection) -> None
         ]
 
         for index, (name, mode) in enumerate(variants, start=1):
-            await connection.send(protocol.chat(
-                f"[yan-agent] TRY {index}/{len(variants)} {name}: transporter UP={mode}"
-            ))
+            await connection.send(
+                protocol.chat(f"[yan-agent] TRY {index}/{len(variants)} {name}: transporter UP={mode}")
+            )
 
             observed = await _build_mekanism_variant(
                 connection,
@@ -677,42 +719,44 @@ async def _run_mekanism_experiment_session(connection: ServerConnection) -> None
             }
             history.append(row)
 
-            await connection.send(protocol.chat(
-                f"[yan-agent] OBSERVE {name}: source={source_n} sink={sink_n} total={total} "
-                f"conserved={conserved} score={score}"
-            ))
+            await connection.send(
+                protocol.chat(
+                    f"[yan-agent] OBSERVE {name}: source={source_n} sink={sink_n} total={total} "
+                    f"conserved={conserved} score={score}"
+                )
+            )
 
             if passed:
-                await connection.send(protocol.chat(
-                    f"[yan-agent] ACCEPT {name}: real Mekanism item flow satisfied objective."
-                ))
+                await connection.send(
+                    protocol.chat(f"[yan-agent] ACCEPT {name}: real Mekanism item flow satisfied objective.")
+                )
                 accepted = row
                 await _cleanup_mekanism_variant(connection, name=name)
                 break
 
-            await connection.send(protocol.chat(
-                f"[yan-agent] REJECT {name}: objective failed; rollback and mutate transporter mode."
-            ))
+            await connection.send(
+                protocol.chat(f"[yan-agent] REJECT {name}: objective failed; rollback and mutate transporter mode.")
+            )
             await _cleanup_mekanism_variant(connection, name=name)
 
         if accepted is None:
             raise RuntimeError(f"no Mekanism variant satisfied objective; history={history}")
 
     except (RuntimeError, KeyError, TypeError, ValueError) as exc:
-        try:
+        with contextlib.suppress(RuntimeError):
             await _action(connection, "mek-emergency-rollback", "rollback_session", {})
-        except RuntimeError:
-            pass
         await connection.send(protocol.error(f"Mekanism experiment v0.5 FAIL: {exc}"))
         return
 
-    await connection.send(protocol.finish(
-        "Mekanism experiment v0.5 PASS: real mod config loop completed; "
-        f"tried={len(history)}; accepted={accepted['name']}; history={history}; worldClean=true"
-    ))
+    await connection.send(
+        protocol.finish(
+            "Mekanism experiment v0.5 PASS: real mod config loop completed; "
+            f"tried={len(history)}; accepted={accepted['name']}; history={history}; worldClean=true"
+        )
+    )
 
 
-async def _build_splitter_variant_a(connection: ServerConnection, name: str) -> dict[str, Any]:
+async def _build_splitter_variant_a(connection: Connection, name: str) -> dict[str, Any]:
     """One PULL extractor feeding a shared T-network and two equal sinks."""
     source = {"x": 6, "y": 3, "z": 0}
     root = {"x": 6, "y": 2, "z": 0}
@@ -722,9 +766,9 @@ async def _build_splitter_variant_a(connection: ServerConnection, name: str) -> 
     left_sink = {"x": 4, "y": 1, "z": 0}
     right_sink = {"x": 8, "y": 1, "z": 0}
 
-    await connection.send(protocol.chat(
-        "[yan-agent] variant-A: BUILD single extractor -> shared T-network -> two sinks"
-    ))
+    await connection.send(
+        protocol.chat("[yan-agent] variant-A: BUILD single extractor -> shared T-network -> two sinks")
+    )
     placements = [
         ("source", source, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
         ("root", root, "mekanism:basic_logistical_transporter"),
@@ -750,9 +794,9 @@ async def _build_splitter_variant_a(connection: ServerConnection, name: str) -> 
         "seed_item",
         {**source, "item": "minecraft:raw_iron", "count": 6},
     )
-    await connection.send(protocol.chat(
-        f"[yan-agent] variant-A: seeded={seeded.get('inserted')}/6; watching real Mekanism routing..."
-    ))
+    await connection.send(
+        protocol.chat(f"[yan-agent] variant-A: seeded={seeded.get('inserted')}/6; watching real Mekanism routing...")
+    )
     await _action(connection, f"{name}-wait", "wait_ticks", {"ticks": 240}, timeout=20.0)
 
     return {
@@ -764,7 +808,7 @@ async def _build_splitter_variant_a(connection: ServerConnection, name: str) -> 
     }
 
 
-async def _build_splitter_variant_b(connection: ServerConnection, name: str) -> dict[str, Any]:
+async def _build_splitter_variant_b(connection: Connection, name: str) -> dict[str, Any]:
     """Two independent PULL extractors compete fairly for one source inventory."""
     source = {"x": 6, "y": 3, "z": 0}
     left_pull = {"x": 5, "y": 3, "z": 0}
@@ -774,9 +818,9 @@ async def _build_splitter_variant_b(connection: ServerConnection, name: str) -> 
     right_arm = {"x": 8, "y": 3, "z": 0}
     right_sink = {"x": 9, "y": 3, "z": 0}
 
-    await connection.send(protocol.chat(
-        "[yan-agent] variant-B: MUTATE topology -> two independent PULL extractors from one source"
-    ))
+    await connection.send(
+        protocol.chat("[yan-agent] variant-B: MUTATE topology -> two independent PULL extractors from one source")
+    )
     placements = [
         ("source", source, "minecraft:chest[facing=north,type=single,waterlogged=false]"),
         ("left-pull", left_pull, "mekanism:basic_logistical_transporter"),
@@ -803,9 +847,9 @@ async def _build_splitter_variant_b(connection: ServerConnection, name: str) -> 
         "mek_set_transporter_mode",
         {**right_pull, "side": "west", "mode": "PULL"},
     )
-    await connection.send(protocol.chat(
-        f"[yan-agent] variant-B: CONFIG left={left_cfg.get('after')} right={right_cfg.get('after')}"
-    ))
+    await connection.send(
+        protocol.chat(f"[yan-agent] variant-B: CONFIG left={left_cfg.get('after')} right={right_cfg.get('after')}")
+    )
 
     seeded = await _action(
         connection,
@@ -813,9 +857,11 @@ async def _build_splitter_variant_b(connection: ServerConnection, name: str) -> 
         "seed_item",
         {**source, "item": "minecraft:raw_iron", "count": 6},
     )
-    await connection.send(protocol.chat(
-        f"[yan-agent] variant-B: seeded={seeded.get('inserted')}/6; observing both independent branches..."
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] variant-B: seeded={seeded.get('inserted')}/6; observing both independent branches..."
+        )
+    )
     await _action(connection, f"{name}-wait", "wait_ticks", {"ticks": 240}, timeout=20.0)
 
     return {
@@ -828,7 +874,7 @@ async def _build_splitter_variant_b(connection: ServerConnection, name: str) -> 
 
 
 async def _cleanup_splitter_variant(
-    connection: ServerConnection,
+    connection: Connection,
     *,
     name: str,
     drain_positions: list[tuple[str, dict[str, int]]],
@@ -836,18 +882,20 @@ async def _cleanup_splitter_variant(
     for label, pos in drain_positions:
         try:
             drained = await _action(connection, f"{name}-drain-{label}", "drain_inventory", pos)
-            await connection.send(protocol.chat(
-                f"[yan-agent] {name}: RESET {label} removed={drained.get('removed_total')}"
-            ))
+            await connection.send(
+                protocol.chat(f"[yan-agent] {name}: RESET {label} removed={drained.get('removed_total')}")
+            )
         except RuntimeError as exc:
             await connection.send(protocol.chat(f"[yan-agent] {name}: RESET {label} skipped: {exc}"))
     rolled = await _action(connection, f"{name}-rollback", "rollback_session", {})
-    await connection.send(protocol.chat(
-        f"[yan-agent] {name}: ROLLBACK removed={rolled.get('removed')} trackedAfter={rolled.get('tracked_after')}"
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] {name}: ROLLBACK removed={rolled.get('removed')} trackedAfter={rolled.get('tracked_after')}"
+        )
+    )
 
 
-async def _run_splitter_experiment_session(connection: ServerConnection) -> None:
+async def _run_splitter_experiment_session(connection: Connection) -> None:
     """v0.6: topology search + persistent skill admission."""
     await connection.send(protocol.hello("yan-splitter-v0.6"))
 
@@ -855,7 +903,10 @@ async def _run_splitter_experiment_session(connection: ServerConnection) -> None
     # durable project memory so future tasks do not rediscover it.
     base_skill_path = save_skill(
         "mekanism_single_extractor_v1",
-        description="A logistical transporter actively extracts from an adjacent source only when the source-facing side is PULL.",
+        description=(
+            "A logistical transporter actively extracts from an adjacent source "
+            "only when the source-facing side is PULL."
+        ),
         implementation={
             "block": "mekanism:basic_logistical_transporter",
             "source_side_mode": "PULL",
@@ -864,20 +915,32 @@ async def _run_splitter_experiment_session(connection: ServerConnection) -> None
         verification={"seeded": 6, "source_after": 0, "sink_after": 6, "conserved": True},
         source_experiment="yan-mekanism-v0.5-live-validated",
     )
-    await connection.send(protocol.chat(
-        f"[yan-agent] MEMORY: loaded/admitted base skill mekanism_single_extractor_v1 -> {base_skill_path.name}"
-    ))
-    await connection.send(protocol.chat(
-        "[yan-agent] v0.6 objective: distribute 6 raw iron so BOTH branches receive items; "
-        "agent may reject a topology and rebuild a structurally different one."
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] MEMORY: loaded/admitted base skill mekanism_single_extractor_v1 -> {base_skill_path.name}"
+        )
+    )
+    await connection.send(
+        protocol.chat(
+            "[yan-agent] v0.6 objective: distribute 6 raw iron so BOTH branches receive items; "
+            "agent may reject a topology and rebuild a structurally different one."
+        )
+    )
 
     # Union of both candidate footprints. Abort before touching the world if any cell is occupied.
     footprint = [
-        {"x": 3, "y": 3, "z": 0}, {"x": 4, "y": 3, "z": 0}, {"x": 5, "y": 3, "z": 0},
-        {"x": 6, "y": 3, "z": 0}, {"x": 7, "y": 3, "z": 0}, {"x": 8, "y": 3, "z": 0},
-        {"x": 9, "y": 3, "z": 0}, {"x": 6, "y": 2, "z": 0}, {"x": 4, "y": 1, "z": 0},
-        {"x": 5, "y": 1, "z": 0}, {"x": 6, "y": 1, "z": 0}, {"x": 7, "y": 1, "z": 0},
+        {"x": 3, "y": 3, "z": 0},
+        {"x": 4, "y": 3, "z": 0},
+        {"x": 5, "y": 3, "z": 0},
+        {"x": 6, "y": 3, "z": 0},
+        {"x": 7, "y": 3, "z": 0},
+        {"x": 8, "y": 3, "z": 0},
+        {"x": 9, "y": 3, "z": 0},
+        {"x": 6, "y": 2, "z": 0},
+        {"x": 4, "y": 1, "z": 0},
+        {"x": 5, "y": 1, "z": 0},
+        {"x": 6, "y": 1, "z": 0},
+        {"x": 7, "y": 1, "z": 0},
         {"x": 8, "y": 1, "z": 0},
     ]
 
@@ -923,28 +986,24 @@ async def _run_splitter_experiment_session(connection: ServerConnection) -> None
                 "passed": passed,
             }
             history.append(row)
-            await connection.send(protocol.chat(
-                f"[yan-agent] OBSERVE {name}: source={source_n} left={left_n} right={right_n} "
-                f"conserved={conserved} bothLive={both_live} imbalance={imbalance} score={score}"
-            ))
+            await connection.send(
+                protocol.chat(
+                    f"[yan-agent] OBSERVE {name}: source={source_n} left={left_n} right={right_n} "
+                    f"conserved={conserved} bothLive={both_live} imbalance={imbalance} score={score}"
+                )
+            )
 
             if passed:
                 accepted = row
                 accepted_topology = observed["topology"]
-                await connection.send(protocol.chat(
-                    f"[yan-agent] ACCEPT {name}: both branches are physically live."
-                ))
-                await _cleanup_splitter_variant(
-                    connection, name=name, drain_positions=observed["drain_positions"]
-                )
+                await connection.send(protocol.chat(f"[yan-agent] ACCEPT {name}: both branches are physically live."))
+                await _cleanup_splitter_variant(connection, name=name, drain_positions=observed["drain_positions"])
                 break
 
-            await connection.send(protocol.chat(
-                f"[yan-agent] REJECT {name}: branch starvation detected; rollback and mutate topology."
-            ))
-            await _cleanup_splitter_variant(
-                connection, name=name, drain_positions=observed["drain_positions"]
+            await connection.send(
+                protocol.chat(f"[yan-agent] REJECT {name}: branch starvation detected; rollback and mutate topology.")
             )
+            await _cleanup_splitter_variant(connection, name=name, drain_positions=observed["drain_positions"])
 
         if accepted is None or accepted_topology is None:
             raise RuntimeError(f"no topology activated both branches; history={history}")
@@ -962,28 +1021,28 @@ async def _run_splitter_experiment_session(connection: ServerConnection) -> None
             source_experiment="yan-splitter-v0.6",
         )
         skills = list_skills()
-        await connection.send(protocol.chat(
-            f"[yan-agent] MEMORY: saved verified skill {skill_path.name}; knownSkills={skills}"
-        ))
+        await connection.send(
+            protocol.chat(f"[yan-agent] MEMORY: saved verified skill {skill_path.name}; knownSkills={skills}")
+        )
 
     except (RuntimeError, KeyError, TypeError, ValueError) as exc:
-        try:
+        with contextlib.suppress(RuntimeError):
             await _action(connection, "split-emergency-rollback", "rollback_session", {})
-        except RuntimeError:
-            pass
         await connection.send(protocol.error(f"splitter experiment v0.6 FAIL: {exc}"))
         return
 
-    await connection.send(protocol.finish(
-        "splitter experiment v0.6 PASS: topology search completed; "
-        f"tried={len(history)} accepted={accepted['name']} topology={accepted_topology}; "
-        f"left={accepted['left']} right={accepted['right']} imbalance={accepted['imbalance']}; "
-        f"skill=mekanism_two_branch_distribution_v1; worldClean=true"
-    ))
+    await connection.send(
+        protocol.finish(
+            "splitter experiment v0.6 PASS: topology search completed; "
+            f"tried={len(history)} accepted={accepted['name']} topology={accepted_topology}; "
+            f"left={accepted['left']} right={accepted['right']} imbalance={accepted['imbalance']}; "
+            f"skill=mekanism_two_branch_distribution_v1; worldClean=true"
+        )
+    )
 
 
 async def _build_generated_dual_pull_candidate(
-    connection: ServerConnection,
+    connection: Connection,
     candidate: TopologyCandidate,
 ) -> dict[str, Any]:
     """Materialize one generated dual-independent-PULL candidate."""
@@ -992,21 +1051,17 @@ async def _build_generated_dual_pull_candidate(
     left_pull = {"x": 5, "y": 3, "z": 0}
     right_pull = {"x": 7, "y": 3, "z": 0}
 
-    left_arms = [
-        {"x": 4 - i, "y": 3, "z": 0}
-        for i in range(candidate.arm_blocks)
-    ]
-    right_arms = [
-        {"x": 8 + i, "y": 3, "z": 0}
-        for i in range(candidate.arm_blocks)
-    ]
+    left_arms = [{"x": 4 - i, "y": 3, "z": 0} for i in range(candidate.arm_blocks)]
+    right_arms = [{"x": 8 + i, "y": 3, "z": 0} for i in range(candidate.arm_blocks)]
     left_sink = {"x": 4 - candidate.arm_blocks, "y": 3, "z": 0}
     right_sink = {"x": 8 + candidate.arm_blocks, "y": 3, "z": 0}
 
-    await connection.send(protocol.chat(
-        f"[yan-agent] CANDIDATE {name}: family={candidate.family} source={candidate.source} "
-        f"armBlocks={candidate.arm_blocks} estimatedBlocks={candidate.estimated_blocks}"
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] CANDIDATE {name}: family={candidate.family} source={candidate.source} "
+            f"armBlocks={candidate.arm_blocks} estimatedBlocks={candidate.estimated_blocks}"
+        )
+    )
     await connection.send(protocol.chat(f"[yan-agent] {name}: {candidate.description}"))
 
     placements: list[tuple[str, dict[str, int], str]] = [
@@ -1015,12 +1070,10 @@ async def _build_generated_dual_pull_candidate(
         ("right-pull", right_pull, "mekanism:basic_logistical_transporter"),
     ]
     placements.extend(
-        (f"left-arm-{i + 1}", pos, "mekanism:basic_logistical_transporter")
-        for i, pos in enumerate(left_arms)
+        (f"left-arm-{i + 1}", pos, "mekanism:basic_logistical_transporter") for i, pos in enumerate(left_arms)
     )
     placements.extend(
-        (f"right-arm-{i + 1}", pos, "mekanism:basic_logistical_transporter")
-        for i, pos in enumerate(right_arms)
+        (f"right-arm-{i + 1}", pos, "mekanism:basic_logistical_transporter") for i, pos in enumerate(right_arms)
     )
     placements.extend(
         [
@@ -1046,9 +1099,9 @@ async def _build_generated_dual_pull_candidate(
         "mek_set_transporter_mode",
         {**right_pull, "side": "west", "mode": "PULL"},
     )
-    await connection.send(protocol.chat(
-        f"[yan-agent] {name}: CONFIG left={left_cfg.get('after')} right={right_cfg.get('after')}"
-    ))
+    await connection.send(
+        protocol.chat(f"[yan-agent] {name}: CONFIG left={left_cfg.get('after')} right={right_cfg.get('after')}")
+    )
 
     seeded = await _action(
         connection,
@@ -1056,9 +1109,9 @@ async def _build_generated_dual_pull_candidate(
         "seed_item",
         {**source, "item": "minecraft:raw_iron", "count": 6},
     )
-    await connection.send(protocol.chat(
-        f"[yan-agent] {name}: seeded={seeded.get('inserted')}/6; benchmarking live flow..."
-    ))
+    await connection.send(
+        protocol.chat(f"[yan-agent] {name}: seeded={seeded.get('inserted')}/6; benchmarking live flow...")
+    )
 
     await _action(connection, f"{name}-wait", "wait_ticks", {"ticks": 200}, timeout=18.0)
 
@@ -1074,7 +1127,7 @@ async def _build_generated_dual_pull_candidate(
 
 
 async def _build_generated_candidate(
-    connection: ServerConnection,
+    connection: Connection,
     candidate: TopologyCandidate,
 ) -> dict[str, Any]:
     if candidate.family == "shared_t":
@@ -1108,27 +1161,33 @@ def _score_topology_result(
     return True, score, imbalance
 
 
-async def _run_topology_search_session(connection: ServerConnection) -> None:
+async def _run_topology_search_session(connection: Connection) -> None:
     """v0.8: generate candidates from memory, benchmark all, select the best, save v2 skill."""
     await connection.send(protocol.hello("yan-topology-search-v0.8"))
 
     candidates, source_skill = generate_two_branch_candidates()
     memory_status = "loaded" if source_skill is not None else "missing"
-    await connection.send(protocol.chat(
-        f"[yan-agent] v0.8 MEMORY: mekanism_two_branch_distribution_v1={memory_status}; "
-        f"generatedCandidates={len(candidates)}"
-    ))
-    await connection.send(protocol.chat(
-        "[yan-agent] v0.8 objective: benchmark ALL generated candidates; "
-        "correctness > balance > compactness. Do not stop at first PASS."
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] v0.8 MEMORY: mekanism_two_branch_distribution_v1={memory_status}; "
+            f"generatedCandidates={len(candidates)}"
+        )
+    )
+    await connection.send(
+        protocol.chat(
+            "[yan-agent] v0.8 objective: benchmark ALL generated candidates; "
+            "correctness > balance > compactness. Do not stop at first PASS."
+        )
+    )
 
     for candidate in candidates:
-        await connection.send(protocol.chat(
-            f"[yan-agent] GENERATED {candidate.candidate_id}: family={candidate.family} "
-            f"source={candidate.source} armBlocks={candidate.arm_blocks} "
-            f"estimatedBlocks={candidate.estimated_blocks}"
-        ))
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] GENERATED {candidate.candidate_id}: family={candidate.family} "
+                f"source={candidate.source} armBlocks={candidate.arm_blocks} "
+                f"estimatedBlocks={candidate.estimated_blocks}"
+            )
+        )
 
     # Union footprint for all generated candidates.
     footprint = [
@@ -1150,9 +1209,9 @@ async def _run_topology_search_session(connection: ServerConnection) -> None:
             raise RuntimeError(f"topology-search footprint is not empty: {occupied}")
 
         for index, candidate in enumerate(candidates, start=1):
-            await connection.send(protocol.chat(
-                f"[yan-agent] BENCHMARK {index}/{len(candidates)} {candidate.candidate_id}"
-            ))
+            await connection.send(
+                protocol.chat(f"[yan-agent] BENCHMARK {index}/{len(candidates)} {candidate.candidate_id}")
+            )
             observed = await _build_generated_candidate(connection, candidate)
 
             source_n = int(observed["source"].get("total_items") or 0)
@@ -1182,11 +1241,13 @@ async def _run_topology_search_session(connection: ServerConnection) -> None:
                 "passed": passed,
             }
             history.append(row)
-            await connection.send(protocol.chat(
-                f"[yan-agent] RESULT {candidate.candidate_id}: source={source_n} left={left_n} "
-                f"right={right_n} conserved={conserved} blocks={block_count} "
-                f"imbalance={imbalance} score={score} pass={passed}"
-            ))
+            await connection.send(
+                protocol.chat(
+                    f"[yan-agent] RESULT {candidate.candidate_id}: source={source_n} left={left_n} "
+                    f"right={right_n} conserved={conserved} blocks={block_count} "
+                    f"imbalance={imbalance} score={score} pass={passed}"
+                )
+            )
 
             await _cleanup_splitter_variant(
                 connection,
@@ -1199,11 +1260,13 @@ async def _run_topology_search_session(connection: ServerConnection) -> None:
             raise RuntimeError(f"all generated topology candidates failed: {history}")
 
         best = max(passing, key=lambda row: row["score"])
-        await connection.send(protocol.chat(
-            f"[yan-agent] SELECT BEST {best['candidate_id']}: score={best['score']} "
-            f"left={best['left_items']} right={best['right_items']} "
-            f"blocks={best['actual_blocks']} source={best['source']}"
-        ))
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] SELECT BEST {best['candidate_id']}: score={best['score']} "
+                f"left={best['left_items']} right={best['right_items']} "
+                f"blocks={best['actual_blocks']} source={best['source']}"
+            )
+        )
 
         skill_path = save_skill(
             "mekanism_two_branch_distribution_v2",
@@ -1231,26 +1294,26 @@ async def _run_topology_search_session(connection: ServerConnection) -> None:
             },
             source_experiment="yan-topology-search-v0.8",
         )
-        await connection.send(protocol.chat(
-            f"[yan-agent] MEMORY: saved optimized skill {skill_path.name}; knownSkills={list_skills()}"
-        ))
+        await connection.send(
+            protocol.chat(f"[yan-agent] MEMORY: saved optimized skill {skill_path.name}; knownSkills={list_skills()}")
+        )
 
     except (RuntimeError, KeyError, TypeError, ValueError) as exc:
-        try:
+        with contextlib.suppress(RuntimeError):
             await _action(connection, "search-emergency-rollback", "rollback_session", {})
-        except RuntimeError:
-            pass
         await connection.send(protocol.error(f"topology search v0.8 FAIL: {exc}"))
         return
 
-    await connection.send(protocol.finish(
-        "topology search v0.8 PASS: "
-        f"generated={len(candidates)} benchmarked={len(history)} "
-        f"best={best['candidate_id']} family={best['family']} armBlocks={best['arm_blocks']} "
-        f"left={best['left_items']} right={best['right_items']} "
-        f"blocks={best['actual_blocks']} score={best['score']} "
-        "skill=mekanism_two_branch_distribution_v2 worldClean=true"
-    ))
+    await connection.send(
+        protocol.finish(
+            "topology search v0.8 PASS: "
+            f"generated={len(candidates)} benchmarked={len(history)} "
+            f"best={best['candidate_id']} family={best['family']} armBlocks={best['arm_blocks']} "
+            f"left={best['left_items']} right={best['right_items']} "
+            f"blocks={best['actual_blocks']} score={best['score']} "
+            "skill=mekanism_two_branch_distribution_v2 worldClean=true"
+        )
+    )
 
 
 def _axis_geometry(
@@ -1307,7 +1370,7 @@ def _axis_geometry(
 
 
 async def _build_spatial_candidate(
-    connection: ServerConnection,
+    connection: Connection,
     candidate: SpatialCandidate,
 ) -> dict[str, Any]:
     """Build one geometry mutation from the v2 primitive and observe real item flow."""
@@ -1322,11 +1385,13 @@ async def _build_spatial_candidate(
 
     name = candidate.candidate_id
     g = _axis_geometry(candidate)
-    await connection.send(protocol.chat(
-        f"[yan-agent] SPATIAL {name}: axis={candidate.axis} "
-        f"leftArm={candidate.left_arm} rightArm={candidate.right_arm} "
-        f"sinkDrop={candidate.sink_drop} extractors={candidate.extractor_count}"
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] SPATIAL {name}: axis={candidate.axis} "
+            f"leftArm={candidate.left_arm} rightArm={candidate.right_arm} "
+            f"sinkDrop={candidate.sink_drop} extractors={candidate.extractor_count}"
+        )
+    )
     await connection.send(protocol.chat(f"[yan-agent] {name}: {candidate.description}"))
 
     placements: list[tuple[str, dict[str, int], str]] = [
@@ -1335,12 +1400,10 @@ async def _build_spatial_candidate(
         ("right-pull", g["right_pull"], "mekanism:basic_logistical_transporter"),
     ]
     placements.extend(
-        (f"left-arm-{i + 1}", pos, "mekanism:basic_logistical_transporter")
-        for i, pos in enumerate(g["left_arms"])
+        (f"left-arm-{i + 1}", pos, "mekanism:basic_logistical_transporter") for i, pos in enumerate(g["left_arms"])
     )
     placements.extend(
-        (f"right-arm-{i + 1}", pos, "mekanism:basic_logistical_transporter")
-        for i, pos in enumerate(g["right_arms"])
+        (f"right-arm-{i + 1}", pos, "mekanism:basic_logistical_transporter") for i, pos in enumerate(g["right_arms"])
     )
     placements.extend(
         [
@@ -1366,10 +1429,12 @@ async def _build_spatial_candidate(
         "mek_set_transporter_mode",
         {**g["right_pull"], "side": g["right_pull_side"], "mode": "PULL"},
     )
-    await connection.send(protocol.chat(
-        f"[yan-agent] {name}: CONFIG left={left_cfg.get('after')}({g['left_pull_side']}) "
-        f"right={right_cfg.get('after')}({g['right_pull_side']})"
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] {name}: CONFIG left={left_cfg.get('after')}({g['left_pull_side']}) "
+            f"right={right_cfg.get('after')}({g['right_pull_side']})"
+        )
+    )
 
     seeded = await _action(
         connection,
@@ -1377,9 +1442,9 @@ async def _build_spatial_candidate(
         "seed_item",
         {**g["source"], "item": "minecraft:raw_iron", "count": 6},
     )
-    await connection.send(protocol.chat(
-        f"[yan-agent] {name}: seeded={seeded.get('inserted')}/6; observing transformed geometry..."
-    ))
+    await connection.send(
+        protocol.chat(f"[yan-agent] {name}: seeded={seeded.get('inserted')}/6; observing transformed geometry...")
+    )
     await _action(connection, f"{name}-wait", "wait_ticks", {"ticks": 140}, timeout=15.0)
 
     return {
@@ -1420,35 +1485,36 @@ def _score_spatial_result(
     return True, score, imbalance
 
 
-async def _run_spatial_search_session(connection: ServerConnection) -> None:
+async def _run_spatial_search_session(connection: Connection) -> None:
     """v0.9: search rotations, asymmetric lengths and vertical forms from the v2 skill."""
     await connection.send(protocol.hello("yan-spatial-search-v0.9"))
 
     candidates, source_skill = generate_spatial_candidates()
-    await connection.send(protocol.chat(
-        f"[yan-agent] v0.9 MEMORY: mekanism_two_branch_distribution_v2="
-        f"{'loaded' if source_skill else 'missing'}; spatialCandidates={len(candidates)}"
-    ))
-    await connection.send(protocol.chat(
-        "[yan-agent] v0.9 objective: test geometric transformations of a verified skill. "
-        "Priority = correctness > balance > material cost > spatial compactness."
-    ))
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] v0.9 MEMORY: mekanism_two_branch_distribution_v2="
+            f"{'loaded' if source_skill else 'missing'}; spatialCandidates={len(candidates)}"
+        )
+    )
+    await connection.send(
+        protocol.chat(
+            "[yan-agent] v0.9 objective: test geometric transformations of a verified skill. "
+            "Priority = correctness > balance > material cost > spatial compactness."
+        )
+    )
 
     for candidate in candidates:
-        await connection.send(protocol.chat(
-            f"[yan-agent] GENERATED {candidate.candidate_id}: family={candidate.family} "
-            f"axis={candidate.axis} arms={candidate.left_arm}/{candidate.right_arm} "
-            f"drop={candidate.sink_drop} extractors={candidate.extractor_count} "
-            f"blocks~{candidate.estimated_blocks}"
-        ))
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] GENERATED {candidate.candidate_id}: family={candidate.family} "
+                f"axis={candidate.axis} arms={candidate.left_arm}/{candidate.right_arm} "
+                f"drop={candidate.sink_drop} extractors={candidate.extractor_count} "
+                f"blocks~{candidate.estimated_blocks}"
+            )
+        )
 
     # Broad union envelope for all v0.9 forms plus the old shared-T control.
-    footprint = [
-        {"x": x, "y": y, "z": z}
-        for x in range(2, 11)
-        for y in range(1, 5)
-        for z in range(-4, 5)
-    ]
+    footprint = [{"x": x, "y": y, "z": z} for x in range(2, 11) for y in range(1, 5) for z in range(-4, 5)]
 
     history: list[dict[str, Any]] = []
     try:
@@ -1461,14 +1527,13 @@ async def _run_spatial_search_session(connection: ServerConnection) -> None:
         occupied = [b for b in (initial.get("blocks") or []) if not b.get("is_air", False)]
         if occupied:
             raise RuntimeError(
-                f"spatial-search footprint is not empty; occupied_count={len(occupied)} "
-                f"sample={occupied[:8]}"
+                f"spatial-search footprint is not empty; occupied_count={len(occupied)} sample={occupied[:8]}"
             )
 
         for index, candidate in enumerate(candidates, start=1):
-            await connection.send(protocol.chat(
-                f"[yan-agent] BENCHMARK {index}/{len(candidates)} {candidate.candidate_id}"
-            ))
+            await connection.send(
+                protocol.chat(f"[yan-agent] BENCHMARK {index}/{len(candidates)} {candidate.candidate_id}")
+            )
             observed = await _build_spatial_candidate(connection, candidate)
 
             source_n = int(observed["source"].get("total_items") or 0)
@@ -1499,11 +1564,13 @@ async def _run_spatial_search_session(connection: ServerConnection) -> None:
             }
             history.append(row)
 
-            await connection.send(protocol.chat(
-                f"[yan-agent] RESULT {candidate.candidate_id}: source={source_n} "
-                f"left={left_n} right={right_n} blocks={block_count} "
-                f"imbalance={imbalance} score={score} pass={passed}"
-            ))
+            await connection.send(
+                protocol.chat(
+                    f"[yan-agent] RESULT {candidate.candidate_id}: source={source_n} "
+                    f"left={left_n} right={right_n} blocks={block_count} "
+                    f"imbalance={imbalance} score={score} pass={passed}"
+                )
+            )
 
             await _cleanup_splitter_variant(
                 connection,
@@ -1532,16 +1599,20 @@ async def _run_spatial_search_session(connection: ServerConnection) -> None:
             for row in passing
         ]
 
-        await connection.send(protocol.chat(
-            f"[yan-agent] SELECT BEST {best['candidate_id']}: axis={best['axis']} "
-            f"arms={best['left_arm']}/{best['right_arm']} drop={best['sink_drop']} "
-            f"left={best['left_items']} right={best['right_items']} "
-            f"blocks={best['actual_blocks']} score={best['score']}"
-        ))
-        await connection.send(protocol.chat(
-            f"[yan-agent] ROBUSTNESS: {len(validated_transforms)}/{len(history)} "
-            "spatial transforms preserved the functional contract."
-        ))
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] SELECT BEST {best['candidate_id']}: axis={best['axis']} "
+                f"arms={best['left_arm']}/{best['right_arm']} drop={best['sink_drop']} "
+                f"left={best['left_items']} right={best['right_items']} "
+                f"blocks={best['actual_blocks']} score={best['score']}"
+            )
+        )
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] ROBUSTNESS: {len(validated_transforms)}/{len(history)} "
+                "spatial transforms preserved the functional contract."
+            )
+        )
 
         skill_path = save_skill(
             "mekanism_two_branch_distribution_v3",
@@ -1558,9 +1629,7 @@ async def _run_spatial_search_session(connection: ServerConnection) -> None:
                 "extractor_count": best["extractor_count"],
                 "actual_blocks": best["actual_blocks"],
                 "source_mode": "PULL",
-                "selection_policy": (
-                    "correctness > balance > material cost > spatial compactness"
-                ),
+                "selection_policy": ("correctness > balance > material cost > spatial compactness"),
                 "candidate_id": best["candidate_id"],
                 "validated_transforms": validated_transforms,
             },
@@ -1577,27 +1646,578 @@ async def _run_spatial_search_session(connection: ServerConnection) -> None:
             },
             source_experiment="yan-spatial-search-v0.9",
         )
-        await connection.send(protocol.chat(
-            f"[yan-agent] MEMORY: saved spatial skill {skill_path.name}; knownSkills={list_skills()}"
-        ))
+        await connection.send(
+            protocol.chat(f"[yan-agent] MEMORY: saved spatial skill {skill_path.name}; knownSkills={list_skills()}")
+        )
 
     except (RuntimeError, KeyError, TypeError, ValueError) as exc:
-        try:
+        with contextlib.suppress(RuntimeError):
             await _action(connection, "spatial-emergency-rollback", "rollback_session", {})
-        except RuntimeError:
-            pass
         await connection.send(protocol.error(f"spatial search v0.9 FAIL: {exc}"))
         return
 
-    await connection.send(protocol.finish(
-        "spatial search v0.9 PASS: "
-        f"generated={len(candidates)} benchmarked={len(history)} passing={len(passing)} "
-        f"best={best['candidate_id']} axis={best['axis']} "
-        f"arms={best['left_arm']}/{best['right_arm']} drop={best['sink_drop']} "
-        f"left={best['left_items']} right={best['right_items']} "
-        f"blocks={best['actual_blocks']} score={best['score']} "
-        "skill=mekanism_two_branch_distribution_v3 worldClean=true"
-    ))
+    await connection.send(
+        protocol.finish(
+            "spatial search v0.9 PASS: "
+            f"generated={len(candidates)} benchmarked={len(history)} passing={len(passing)} "
+            f"best={best['candidate_id']} axis={best['axis']} "
+            f"arms={best['left_arm']}/{best['right_arm']} drop={best['sink_drop']} "
+            f"left={best['left_items']} right={best['right_items']} "
+            f"blocks={best['actual_blocks']} score={best['score']} "
+            "skill=mekanism_two_branch_distribution_v3 worldClean=true"
+        )
+    )
+
+
+def _pos_tuple(row: dict[str, Any]) -> tuple[int, int, int]:
+    return int(row["x"]), int(row["y"]), int(row["z"])
+
+
+def _pos_args(pos: tuple[int, int, int]) -> dict[str, int]:
+    return {"x": pos[0], "y": pos[1], "z": pos[2]}
+
+
+async def _scan_environment_scene(connection: Connection) -> dict[str, Any]:
+    """Discover the user's existing three-chest scene and all obstacles around it."""
+    lo = (-6, -1, -6)
+    hi = (6, 3, 6)
+    positions = [
+        {"x": x, "y": y, "z": z}
+        for x in range(lo[0], hi[0] + 1)
+        for y in range(lo[1], hi[1] + 1)
+        for z in range(lo[2], hi[2] + 1)
+    ]
+    observed = await _action(
+        connection,
+        "env-scan",
+        "inspect_blocks",
+        {"positions": positions},
+        timeout=20.0,
+    )
+    blocks = observed.get("blocks") or []
+    chest_rows = [row for row in blocks if row.get("block") == "minecraft:chest"]
+    if len(chest_rows) != 3:
+        raise RuntimeError(
+            f"scene requires exactly 3 minecraft:chest blocks inside scan volume; found {len(chest_rows)}"
+        )
+
+    inventories: list[tuple[tuple[int, int, int], dict[str, Any]]] = []
+    for index, row in enumerate(chest_rows, start=1):
+        pos = _pos_tuple(row)
+        inv = await _action(
+            connection,
+            f"env-identify-chest-{index}",
+            "read_inventory",
+            _pos_args(pos),
+        )
+        inventories.append((pos, inv))
+
+    source_candidates: list[tuple[int, int, int]] = []
+    empty: list[tuple[int, int, int]] = []
+    for pos, inv in inventories:
+        items = inv.get("items") or []
+        raw_iron = sum(int(item.get("count") or 0) for item in items if item.get("item") == "minecraft:raw_iron")
+        total = int(inv.get("total_items") or 0)
+        if total == 6 and raw_iron == 6:
+            source_candidates.append(pos)
+        elif total == 0:
+            empty.append(pos)
+
+    if len(source_candidates) != 1 or len(empty) != 2:
+        raise RuntimeError(
+            "scene contract not satisfied: need one chest containing exactly 6 raw iron "
+            f"and two empty chests; sourceCandidates={source_candidates}, empty={empty}"
+        )
+
+    source = source_candidates[0]
+    sinks = (empty[0], empty[1])
+    endpoints = {source, *sinks}
+    occupied = {_pos_tuple(row) for row in blocks if not row.get("is_air", False) and _pos_tuple(row) not in endpoints}
+
+    return {
+        "source": source,
+        "sinks": sinks,
+        "occupied": occupied,
+        "bounds": (lo, hi),
+        "scan_blocks": len(blocks),
+        "obstacle_count": len(occupied),
+    }
+
+
+async def _place_environment_branch(
+    connection: Connection,
+    *,
+    branch: BranchRoute,
+    label: str,
+) -> None:
+    for index, pos in enumerate(branch.path, start=1):
+        await _action(
+            connection,
+            f"{label}-place-{index}",
+            "place_block",
+            {**_pos_args(pos), "block": "mekanism:basic_logistical_transporter"},
+        )
+
+    await _action(connection, f"{label}-settle", "wait_ticks", {"ticks": 10}, timeout=5.0)
+    start = branch.path[0]
+    configured = await _action(
+        connection,
+        f"{label}-pull",
+        "mek_set_transporter_mode",
+        {**_pos_args(start), "side": branch.source_side, "mode": "PULL"},
+    )
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] {label}: built length={len(branch.path)} "
+            f"sourceSide={branch.source_side} mode={configured.get('after')}"
+        )
+    )
+
+
+async def _remove_environment_branch(
+    connection: Connection,
+    *,
+    branch: BranchRoute,
+    label: str,
+) -> None:
+    # Remove from the sink end backwards so the source extractor remains live until last.
+    removed = 0
+    for index, pos in enumerate(reversed(branch.path), start=1):
+        try:
+            result = await _action(
+                connection,
+                f"{label}-remove-{index}",
+                "remove_block",
+                _pos_args(pos),
+            )
+            if result.get("is_air"):
+                removed += 1
+        except RuntimeError as exc:
+            await connection.send(protocol.chat(f"[yan-agent] {label}: remove warning at {pos}: {exc}"))
+    await connection.send(protocol.chat(f"[yan-agent] {label}: LOCAL REMOVE removed={removed}/{len(branch.path)}"))
+
+
+def _transit_positions(branches: list[BranchRoute]) -> list[dict[str, int]]:
+    seen: set[tuple[int, int, int]] = set()
+    result: list[dict[str, int]] = []
+    for branch in branches:
+        for pos in branch.path:
+            if pos in seen:
+                continue
+            seen.add(pos)
+            result.append(_pos_args(pos))
+    return result
+
+
+ENV_FLOW_STEP_TICKS = 60
+ENV_FLOW_MAX_TICKS = 1200
+
+
+async def _wait_for_environment_flow(
+    connection: Connection,
+    *,
+    source: tuple[int, int, int],
+    sinks: tuple[tuple[int, int, int], tuple[int, int, int]],
+    branches: list[BranchRoute],
+    label: str,
+) -> dict[str, Any]:
+    """Wait until the routed items settle, then return the observed result.
+
+    A fixed wait cannot fit every route: a basic transporter moves about one block per
+    20 ticks (speed 5 of 100 progress per block, docs/recon/mekanism/oracle_defaults.json),
+    so a 10-block branch needs ~200 ticks for the first item alone. Instead, observe in
+    steps until nothing is in transit, or until transit stops changing (stuck), within a
+    bounded budget.
+    """
+    waited = 0
+    previous: list[tuple[Any, ...]] | None = None
+    result: dict[str, Any] = {}
+    while waited < ENV_FLOW_MAX_TICKS:
+        await _action(connection, f"{label}-flow", "wait_ticks", {"ticks": ENV_FLOW_STEP_TICKS}, timeout=18.0)
+        waited += ENV_FLOW_STEP_TICKS
+        result = await _read_environment_result(connection, source=source, sinks=sinks, branches=branches, label=label)
+        if result["transit"] == 0:
+            break
+        snapshot = sorted(
+            (item.get("x"), item.get("y"), item.get("z"), item.get("progress"))
+            for item in result.get("transit_items") or []
+        )
+        if snapshot == previous:
+            break
+        previous = snapshot
+    result["waited_ticks"] = waited
+    return result
+
+
+async def _read_environment_result(
+    connection: Connection,
+    *,
+    source: tuple[int, int, int],
+    sinks: tuple[tuple[int, int, int], tuple[int, int, int]],
+    branches: list[BranchRoute],
+    label: str,
+) -> dict[str, Any]:
+    src = await _action(connection, f"{label}-read-source", "read_inventory", _pos_args(source))
+    left = await _action(connection, f"{label}-read-sink-1", "read_inventory", _pos_args(sinks[0]))
+    right = await _action(connection, f"{label}-read-sink-2", "read_inventory", _pos_args(sinks[1]))
+    positions = _transit_positions(branches)
+    transit = (
+        await _action(
+            connection,
+            f"{label}-read-transit",
+            "mek_read_transit",
+            {"positions": positions},
+        )
+        if positions
+        else {"total_items": 0, "stack_count": 0, "items": []}
+    )
+
+    source_n = int(src.get("total_items") or 0)
+    left_n = int(left.get("total_items") or 0)
+    right_n = int(right.get("total_items") or 0)
+    transit_n = int(transit.get("total_items") or 0)
+    total = source_n + left_n + right_n + transit_n
+    passed = source_n == 0 and left_n > 0 and right_n > 0 and transit_n == 0 and total == 6
+    return {
+        "source": source_n,
+        "left": left_n,
+        "right": right_n,
+        "transit": transit_n,
+        "transit_stacks": int(transit.get("stack_count") or 0),
+        "transit_items": transit.get("items") or [],
+        "total": total,
+        "conserved": total == 6,
+        "passed": passed,
+        "imbalance": abs(left_n - right_n),
+    }
+
+
+async def _reset_environment_items(
+    connection: Connection,
+    *,
+    source: tuple[int, int, int],
+    sinks: tuple[tuple[int, int, int], tuple[int, int, int]],
+    branches: list[BranchRoute],
+    label: str,
+) -> None:
+    positions = _transit_positions(branches)
+    cleared_transit = 0
+    cleared_stacks = 0
+    if positions:
+        cleared = await _action(
+            connection,
+            f"{label}-clear-transit",
+            "mek_clear_transit",
+            {"positions": positions},
+        )
+        cleared_transit = int(cleared.get("cleared_items") or 0)
+        cleared_stacks = int(cleared.get("cleared_stacks") or 0)
+
+    drained_items = 0
+    for role, pos in (("source", source), ("sink-1", sinks[0]), ("sink-2", sinks[1])):
+        drained = await _action(
+            connection,
+            f"{label}-drain-{role}",
+            "drain_inventory",
+            {**_pos_args(pos), "item": "minecraft:raw_iron"},
+        )
+        drained_items += int(drained.get("removed_total") or 0)
+
+    accounted = cleared_transit + drained_items
+    if accounted != 6:
+        raise RuntimeError(
+            f"{label}: reset conservation failure before reseed: "
+            f"transit={cleared_transit} inventories={drained_items} accounted={accounted} expected=6"
+        )
+
+    seeded = await _action(
+        connection,
+        f"{label}-reseed",
+        "seed_item",
+        {**_pos_args(source), "item": "minecraft:raw_iron", "count": 6},
+    )
+    await connection.send(
+        protocol.chat(
+            f"[yan-agent] {label}: RESET TRANSIT-AWARE "
+            f"transitItems={cleared_transit} transitStacks={cleared_stacks} "
+            f"inventoryItems={drained_items} accounted={accounted}/6 "
+            f"reseeded={seeded.get('inserted')}/6"
+        )
+    )
+
+
+async def _run_environment_build_session(connection: Connection) -> None:
+    """v1.2: transit-aware environment repair with exact conservation."""
+    await connection.send(protocol.hello("yan-transit-aware-v1.2"))
+    await connection.send(
+        protocol.chat("[yan-agent] v1.2: scanning existing world with transporter-transit accounting enabled.")
+    )
+
+    skill, _version = load_latest_skill("mekanism_two_branch_distribution", min_version=3)
+    if skill is None:
+        await connection.send(
+            protocol.error("environment builder v1.0 requires verified skill mekanism_two_branch_distribution_v3+")
+        )
+        return
+    implementation = skill.get("implementation") or {}
+    if int(implementation.get("extractor_count") or 0) != 2:
+        await connection.send(protocol.error("v3 skill is incompatible: expected extractor_count=2"))
+        return
+
+    scene: dict[str, Any] | None = None
+    active_branches: list[BranchRoute] = []
+    repair_count = 0
+    plan_history: list[dict[str, Any]] = []
+
+    try:
+        scene = await _scan_environment_scene(connection)
+        source = scene["source"]
+        sinks = scene["sinks"]
+        occupied = scene["occupied"]
+        bounds = scene["bounds"]
+
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] SCENE: source={source} sinks={sinks} "
+                f"obstacles={scene['obstacle_count']} scanned={scene['scan_blocks']}"
+            )
+        )
+        await connection.send(
+            protocol.chat(
+                "[yan-agent] MEMORY: using v3 primitive = two independent PULL extractors; "
+                "geometry will be planned from observed free space."
+            )
+        )
+
+        plans = generate_route_plans(
+            source=source,
+            sinks=sinks,
+            occupied=occupied,
+            bounds=bounds,
+            max_plans=5,
+        )
+        if not plans:
+            raise RuntimeError("planner found no pair of routes from source to both sinks")
+
+        for plan in plans:
+            await connection.send(
+                protocol.chat(
+                    f"[yan-agent] PLAN {plan.plan_id}: mode={plan.mode} cost={plan.cost} "
+                    f"lengths={[len(branch.path) for branch in plan.branches]}"
+                )
+            )
+
+        # Start with the cheapest naive plan so live feedback, not only geometry,
+        # determines whether the two Mekanism networks are actually independent.
+        current_plan = plans[0]
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] BUILD PLAN {current_plan.plan_id}: preserving all existing obstacles/endpoints."
+            )
+        )
+        for index, branch in enumerate(current_plan.branches, start=1):
+            await _place_environment_branch(
+                connection,
+                branch=branch,
+                label=f"{current_plan.plan_id}-branch-{index}",
+            )
+            active_branches.append(branch)
+
+        result = await _wait_for_environment_flow(
+            connection, source=source, sinks=sinks, branches=active_branches, label="env-initial"
+        )
+        plan_history.append({"plan": current_plan.as_dict(), "result": result})
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] OBSERVE initial: source={result['source']} "
+                f"sink1={result['left']} sink2={result['right']} transit={result['transit']} "
+                f"total={result['total']} conserved={result['conserved']} pass={result['passed']} "
+                f"waited={result['waited_ticks']}"
+            )
+        )
+
+        if not result["passed"]:
+            starved = [index for index, count in enumerate((result["left"], result["right"])) if count == 0]
+            live = [index for index, count in enumerate((result["left"], result["right"])) if count > 0]
+
+            if len(starved) == 1 and len(live) == 1:
+                failed_index = starved[0]
+                working_index = live[0]
+                failed_branch = active_branches[failed_index]
+                working_branch = active_branches[working_index]
+
+                await connection.send(
+                    protocol.chat(
+                        f"[yan-agent] DIAGNOSE: sink{failed_index + 1} starved while "
+                        f"sink{working_index + 1} is live. Keeping working branch and repairing only failed branch."
+                    )
+                )
+                await _reset_environment_items(
+                    connection, source=source, sinks=sinks, branches=active_branches, label="env-local-repair"
+                )
+                await _remove_environment_branch(
+                    connection,
+                    branch=failed_branch,
+                    label=f"failed-branch-{failed_index + 1}",
+                )
+
+                alternatives = replan_failed_branch(
+                    source=source,
+                    sink=sinks[failed_index],
+                    occupied=occupied,
+                    working_path=set(working_branch.path),
+                    bounds=bounds,
+                    avoid_paths=[set(failed_branch.path)],
+                )
+                if not alternatives:
+                    raise RuntimeError("local repair planner found no alternative route for starved branch")
+
+                repaired = False
+                for alternative in alternatives[:3]:
+                    repair_count += 1
+                    await connection.send(
+                        protocol.chat(
+                            f"[yan-agent] LOCAL REPAIR {repair_count}: reroute only sink{failed_index + 1}; "
+                            f"newLength={len(alternative.path)} sourceSide={alternative.source_side}"
+                        )
+                    )
+                    await _place_environment_branch(
+                        connection,
+                        branch=alternative,
+                        label=f"repair-{repair_count}",
+                    )
+                    active_branches[failed_index] = alternative
+
+                    result = await _wait_for_environment_flow(
+                        connection,
+                        source=source,
+                        sinks=sinks,
+                        branches=active_branches,
+                        label=f"repair-{repair_count}",
+                    )
+                    plan_history.append(
+                        {
+                            "repair": repair_count,
+                            "branch": alternative.as_dict(),
+                            "result": result,
+                        }
+                    )
+                    await connection.send(
+                        protocol.chat(
+                            f"[yan-agent] OBSERVE repair-{repair_count}: source={result['source']} "
+                            f"sink1={result['left']} sink2={result['right']} transit={result['transit']} "
+                            f"total={result['total']} conserved={result['conserved']} pass={result['passed']}"
+                        )
+                    )
+                    if result["passed"]:
+                        repaired = True
+                        break
+
+                    await _reset_environment_items(
+                        connection,
+                        source=source,
+                        sinks=sinks,
+                        branches=active_branches,
+                        label=f"repair-{repair_count}-reset",
+                    )
+                    await _remove_environment_branch(
+                        connection,
+                        branch=alternative,
+                        label=f"repair-{repair_count}-failed",
+                    )
+
+                if not repaired:
+                    raise RuntimeError("local repairs exhausted without activating both sinks")
+            else:
+                # If the failure is not a single-starved-branch case, use the best
+                # skill-informed separated full plan as a fallback.
+                await connection.send(
+                    protocol.chat(
+                        "[yan-agent] DIAGNOSE: failure is not isolated to one branch; "
+                        "falling back to a full skill-informed separated plan."
+                    )
+                )
+                await _reset_environment_items(
+                    connection, source=source, sinks=sinks, branches=active_branches, label="env-full-replan"
+                )
+                rolled = await _action(connection, "env-full-rollback", "rollback_session", {})
+                active_branches.clear()
+                await connection.send(
+                    protocol.chat(f"[yan-agent] FULL REPLAN rollback removed={rolled.get('removed')}")
+                )
+
+                fallback = next((p for p in plans if p.mode == "separated"), None)
+                if fallback is None:
+                    raise RuntimeError("no separated fallback plan available")
+                for index, branch in enumerate(fallback.branches, start=1):
+                    await _place_environment_branch(
+                        connection,
+                        branch=branch,
+                        label=f"fallback-branch-{index}",
+                    )
+                    active_branches.append(branch)
+                result = await _wait_for_environment_flow(
+                    connection, source=source, sinks=sinks, branches=active_branches, label="env-fallback"
+                )
+                plan_history.append({"plan": fallback.as_dict(), "result": result})
+                if not result["passed"]:
+                    raise RuntimeError(f"separated fallback also failed: {result}")
+
+        # PASS: deliberately preserve the built solution and the item distribution.
+        successful_paths = [branch.as_dict() for branch in active_branches]
+        skill_path = save_skill(
+            "environment_transit_aware_repair_v1",
+            description=(
+                "Verified environment-aware Mekanism routing over user-provided endpoints and obstacles. "
+                "Successful network is preserved in-world instead of rolled back."
+            ),
+            implementation={
+                "base_skill": "mekanism_two_branch_distribution_v3",
+                "source": list(source),
+                "sinks": [list(s) for s in sinks],
+                "paths": successful_paths,
+                "repair_count": repair_count,
+                "obstacle_count": scene["obstacle_count"],
+                "planner": "A* with live-flow validation and local failed-branch repair",
+            },
+            verification={
+                **result,
+                "world_preserved": True,
+                "plan_history": plan_history,
+            },
+            source_experiment="yan-transit-aware-v1.2",
+        )
+        await connection.send(
+            protocol.chat(
+                f"[yan-agent] ACCEPT: existing scene solved. Network preserved in world. "
+                f"repairCount={repair_count} transitAware=true skill={skill_path.name}"
+            )
+        )
+        await connection.send(
+            protocol.finish(
+                "transit-aware environment builder v1.2 PASS: "
+                f"source={result['source']} sink1={result['left']} sink2={result['right']} "
+                f"repairs={repair_count} obstacles={scene['obstacle_count']} "
+                f"transit={result['transit']} conserved={result['conserved']} "
+                "worldPreserved=true skill=environment_transit_aware_repair_v1"
+            )
+        )
+
+    except (RuntimeError, KeyError, TypeError, ValueError) as exc:
+        try:
+            if scene is not None and active_branches:
+                await _reset_environment_items(
+                    connection,
+                    source=scene["source"],
+                    sinks=scene["sinks"],
+                    branches=active_branches,
+                    label="env-emergency-reset",
+                )
+            rolled = await _action(connection, "env-emergency-rollback", "rollback_session", {})
+            await connection.send(protocol.chat(f"[yan-agent] EMERGENCY ROLLBACK removed={rolled.get('removed')}"))
+        except RuntimeError:
+            pass
+        await connection.send(protocol.error(f"transit-aware environment builder v1.2 FAIL: {exc}"))
 
 
 async def _serve(host: str, port: int, config: Config) -> None:
