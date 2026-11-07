@@ -72,7 +72,9 @@ Ordered steps:
    3D, machine sides set from where the routes arrive.
    *Done when:* one goal in three volumes yields three different layouts, all passing
    live with exact accounting, with no volume-specific code.
-2. **Shop as a module with ports.** A verified group of machines with input, output and
+2. **Shop as a module with ports.** ✓ 2026-11-07: module iron_ingot_enrich_smelt_shop_v1
+   built from its description in pillared_hall (no turn, run 20261107T131722Z_module_174c0a54) and narrow_room
+   (quarter turn, run 20261107T131821Z_module_4cc7264c), both PASS 6 → 8. A verified group of machines with input, output and
    power ports on its boundary.
    *Done when:* a shop is built from its module description in two different
    volumes and passes; its ports are recorded.

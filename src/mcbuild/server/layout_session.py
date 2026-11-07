@@ -135,8 +135,36 @@ def _diagnose(state: dict[str, Any], layout: Layout3D, expected: int) -> str:
 async def _try(connection, scored: ScoredChain, layout: Layout3D, attempt: int) -> tuple[bool, dict[str, Any]]:
     catalog = load_catalog()
     chain = scored.chain
-    label = f"lay{attempt}"
-    await _build(connection, layout, label, skip_input_pull=_fault_attempt() == attempt)
+    longest = max(int(catalog.fact(s.machine, "ticks_per_operation") or 200) for s in chain.stages)
+    return await verify_layout(
+        connection,
+        layout,
+        f"lay{attempt}",
+        source_item=chain.source_item,
+        target_item=chain.target_item,
+        seed=scored.source_needed,
+        expected=scored.output,
+        budget=scored.ticks + 40 * len(layout.transporters) + 600,
+        longest_op=longest,
+        skip_input_pull=_fault_attempt() == attempt,
+    )
+
+
+async def verify_layout(
+    connection,
+    layout: Layout3D,
+    label: str,
+    *,
+    source_item: str,
+    target_item: str,
+    seed: int,
+    expected: int,
+    budget: int,
+    longest_op: int,
+    skip_input_pull: bool = False,
+) -> tuple[bool, dict[str, Any]]:
+    """Build a layout, seed it, observe until settled and check the exact contract."""
+    await _build(connection, layout, label, skip_input_pull=skip_input_pull)
     await _wait(connection, f"{label}-power-settle", 40, 8.0)
     for i, m in enumerate(layout.machines, start=1):
         energy = await _action(
@@ -145,36 +173,29 @@ async def _try(connection, scored: ScoredChain, layout: Layout3D, attempt: int) 
         if int(energy.get("energy") or 0) <= 0:
             return False, {"diagnosis": f"machine {i} ({m.machine}) received no energy via {m.energy_face}"}
     seeded = await _action(
-        connection,
-        f"{label}-seed",
-        "seed_item",
-        {**_p(layout.source).args(), "item": chain.source_item, "count": scored.source_needed},
+        connection, f"{label}-seed", "seed_item", {**_p(layout.source).args(), "item": source_item, "count": seed}
     )
-    if int(seeded.get("inserted") or 0) != scored.source_needed:
-        return False, {"diagnosis": f"seeded {seeded.get('inserted')}/{scored.source_needed}"}
+    if int(seeded.get("inserted") or 0) != seed:
+        return False, {"diagnosis": f"seeded {seeded.get('inserted')}/{seed}"}
 
-    longest = max(int(catalog.fact(s.machine, "ticks_per_operation") or 200) for s in chain.stages)
-    budget = scored.ticks + 40 * len(layout.transporters) + 600
     waited = last_change = 0
     previous: dict[str, Any] | None = None
     state: dict[str, Any] = {}
     while waited < budget:
         await _action(connection, f"{label}-flow-{waited}", "wait_ticks", {"ticks": POLL_TICKS}, timeout=20.0)
         waited += POLL_TICKS
-        state = await _read(connection, layout, chain.source_item, chain.target_item, f"{label}-{waited}")
-        if state["sink"] >= scored.output and state["transit"] == 0 and not any(state["machines"]):
+        state = await _read(connection, layout, source_item, target_item, f"{label}-{waited}")
+        if state["sink"] >= expected and state["transit"] == 0 and not any(state["machines"]):
             break
         if state != previous:
             last_change = waited
-        elif waited - last_change > longest + POLL_TICKS:
+        elif waited - last_change > longest_op + POLL_TICKS:
             break
         previous = state
     state["waited_ticks"] = waited
-    passed = (
-        state["source"] == 0 and state["sink"] == scored.output and state["transit"] == 0 and not any(state["machines"])
-    )
+    passed = state["source"] == 0 and state["sink"] == expected and state["transit"] == 0 and not any(state["machines"])
     if not passed:
-        state["diagnosis"] = _diagnose(state, layout, scored.output)
+        state["diagnosis"] = _diagnose(state, layout, expected)
     return passed, state
 
 
@@ -266,7 +287,7 @@ async def run_layout_session(spec: str, connection) -> None:
                     ],
                     "segments": [{"cells": s.cells, "pull": s.pull_face} for s in layout.segments],
                 },
-                verification={"source": scored.source_needed, "output": scored.output, **state},
+                verification={**state, "source_seeded": scored.source_needed, "output_planned": scored.output},
                 source_experiment="yan-layout-3d-v1",
             )
             await connection.send(

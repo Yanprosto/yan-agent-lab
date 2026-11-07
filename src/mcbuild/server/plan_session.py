@@ -207,7 +207,7 @@ async def run_plan_session(spec: str, connection) -> None:
                     ],
                     "layout": "line of probe cells: item in west, out east, energy south",
                 },
-                verification={"source": scored.source_needed, "output": scored.output, **state},
+                verification={**state, "source_seeded": scored.source_needed, "output_planned": scored.output},
                 source_experiment="yan-process-planner-v1",
             )
             await connection.send(
