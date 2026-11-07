@@ -113,7 +113,8 @@ places, and restored to the same contract using only the planned repair items.
 1. Owner-side client check of a tall world (D15) — nothing else depends on it more.
 2. Macro generator: a 3D graph of tiers with voids and vertical links, preview, reachability
    check (I18 on the vertical axis).
-3. Place verified districts into tiers; the environment line wraps them (mode B).
+3. Place verified districts into tiers; the environment line wraps them (mode B). Every giant form
+   has an entrance and something to find (v1: hollow shell with an opening and a marker; v2: modules).
    *Done when:* a generated tiered volume is reachable top to bottom and contains at least two
    verified districts that pass in place.
 

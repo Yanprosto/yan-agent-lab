@@ -131,6 +131,8 @@ before the pack is published.
   is checked for version, license and compatibility before adoption (owner's statement).
 - **2026-11-07 — Singleplayer, no Lithium** in the current pack (owner). Closes D6.
 - **2026-11-07 — World height 4096** (Y −128 … 3967); 32k not needed because width is unlimited.
+- **2026-11-07 — Giant forms are enterable (wish).** The owner wants to climb into every form and find
+  something interesting; v1 accepts hollow shells with an opening, interiors come later. (WORLD §3d)
 - **2026-11-07 — Narrative locality** (reference: Peripeteia): despite the vast scale, the story
   unfolds within about a hundred blocks. The scale is a backdrop to be seen, not a distance to be
   crossed. (WORLD §3d; reading of the rule is D17)
