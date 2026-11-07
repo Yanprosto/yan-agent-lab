@@ -100,3 +100,9 @@ World rebuilding happens only inside anomaly zones. The stable world stays conne
 anomaly zones are never cut by it.
 *Check:* after each generated rebuild, a connectivity test over the stable-zone graph
 passes and no player-owned block outside the anomaly zones has changed.
+
+**I19. The teleport zone is immutable.** [GAMEPLAY §1a]
+No world event and no generated rebuild changes any block inside the teleport zone
+(settlement and warehouse).
+*Check:* the teleport zone is excluded from event and rebuild regions; a block hash of
+the zone is unchanged after each cycle except for player edits.

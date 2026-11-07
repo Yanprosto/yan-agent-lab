@@ -53,11 +53,11 @@ The player's day is split between far expeditions and settling "near the telepor
 Is it a fixed home point, a network between restored nodes, the spawn? What limits it?
 What happens to a player far from it on day 7? (GAMEPLAY §9)
 
-## D12. Details of what is lost
+## D12. Teleport zone details
 
-Decided: world, infrastructure and settlement persist; unextracted inventory is lost.
-Open: what counts as "extracted", death mid-cycle, whether the settlement near the
-teleport is safe from day-7 events. (GAMEPLAY §1a)
+Size of the immutable teleport zone; whether the warehouse is the bank between cycles
+or items move further into the hub; how warehouse contents relate to hub loadout.
+(GAMEPLAY §1a)
 
 ## D13. Cycle length, sleep, offline time
 
@@ -96,4 +96,9 @@ Wood, food, ores when the whole world is megastructure; which BMC5 parts remain.
 - **2026-11-06 — Anomaly zones.** World rebuilding happens only in dedicated anomaly
   zones of hundreds of chunks; the rest of the world is stable, so supply routes are
   never cut. Invariant I18. (GAMEPLAY §1b)
+- **2026-11-07 — Extraction.** "Extracted" means stored in the warehouse at the
+  teleport, reached by carrying or via the Cargo Relay network. Everything not sent
+  there is lost, including on death mid-cycle. (GAMEPLAY §1a)
+- **2026-11-07 — Immutable teleport zone.** Settlement and warehouse sit in an
+  immutable zone around the teleport, untouched by events and rebuilds. Invariant I19.
 
