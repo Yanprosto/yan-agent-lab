@@ -182,6 +182,20 @@
   "verified_in_volume": "low_hall",
   "lab": "headless NeoForge 21.1.255 + Mekanism 10.7.19.85",
   "skill": "layout_low_hall_enrichment_chamber_energized_smelter_v1",
-  "verified_at_utc": "2026-11-07T12:59:16.253445+00:00"
+  "verified_at_utc": "2026-11-07T12:59:16.253445+00:00",
+  "placements": [
+   {
+    "volume": "pillared_hall",
+    "turns": 0,
+    "run_id": "20261107T131722Z_module_174c0a54",
+    "result": "PASS 6 -> 8"
+   },
+   {
+    "volume": "narrow_room",
+    "turns": 1,
+    "run_id": "20261107T131821Z_module_4cc7264c",
+    "result": "PASS 6 -> 8"
+   }
+  ]
  }
 }
