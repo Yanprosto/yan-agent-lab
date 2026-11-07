@@ -11,3 +11,6 @@ build/
 
 .yan_runtime_runs/
 .yan_runtime_logs_repo/
+
+# Skills verified on this machine (runtime output); committed baselines live in yan_knowledge/seed/
+yan_knowledge/skills/
