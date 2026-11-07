@@ -1,0 +1,30 @@
+{
+  "audit_date": "2026-10-11",
+  "method": "javap of installed JAR; recovered original audit, not a new scan",
+  "jar": {
+    "name": "Mekanism-1.21.1-10.7.19.85.jar",
+    "sha256": "004dbc9f3106f4d192aeaa1ee1190dd16ec9ca8059ed3d093b80034f4c574f43"
+  },
+  "broad": {
+    "outer_classes": 2026,
+    "selected_classes": 120,
+    "semantic_hits": 4519
+  },
+  "targeted": {
+    "requested": 37,
+    "successful": 37,
+    "failed": 0
+  },
+  "archives": [
+    {
+      "file": "MEKANISM_RECON_20261011_011430.zip",
+      "bytes": 402851,
+      "sha256": "6dc8857f9733fc4fe32413dd24d314665c49983aea54b65090b3cc0f84d194ec"
+    },
+    {
+      "file": "MEKANISM_TARGETED_RECON_20261011_012311.zip",
+      "bytes": 204585,
+      "sha256": "fc9dc2cbf41ae570091c50183cf2fe2cf83d116f88da670478b8dcb01ad2bb88"
+    }
+  ]
+}

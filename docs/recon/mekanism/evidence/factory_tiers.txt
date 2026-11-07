@@ -1,0 +1,91 @@
+Source: targeted_javap.txt in MEKANISM_TARGETED_RECON_20261011_012311.zip
+Original line numbers are preserved below.
+
+--- original lines 678-700 ---
+678: CLASS: mekanism.common.tier.FactoryTier
+679: ====================================================================================================
+680: Compiled from "FactoryTier.java"
+681: public final class mekanism.common.tier.FactoryTier extends java.lang.Enum<mekanism.common.tier.FactoryTier> implements mekanism.api.tier.ITier {
+682:   public static final mekanism.common.tier.FactoryTier BASIC;
+683:     descriptor: Lmekanism/common/tier/FactoryTier;
+684: 
+685:   public static final mekanism.common.tier.FactoryTier ADVANCED;
+686:     descriptor: Lmekanism/common/tier/FactoryTier;
+687: 
+688:   public static final mekanism.common.tier.FactoryTier ELITE;
+689:     descriptor: Lmekanism/common/tier/FactoryTier;
+690: 
+691:   public static final mekanism.common.tier.FactoryTier ULTIMATE;
+692:     descriptor: Lmekanism/common/tier/FactoryTier;
+693: 
+694:   public final int processes;
+695:     descriptor: I
+696: 
+697:   private final mekanism.api.tier.BaseTier baseTier;
+698:     descriptor: Lmekanism/api/tier/BaseTier;
+699: 
+700:   private static final mekanism.common.tier.FactoryTier[] $VALUES;
+
+--- original lines 717-734 ---
+717:        6: checkcast     #1                  // class mekanism/common/tier/FactoryTier
+718:        9: areturn
+719: 
+720:   private mekanism.common.tier.FactoryTier(mekanism.api.tier.BaseTier, int);
+721:     descriptor: (Ljava/lang/String;ILmekanism/api/tier/BaseTier;I)V
+722:     Code:
+723:        0: aload_0
+724:        1: aload_1
+725:        2: iload_2
+726:        3: invokespecial #31                 // Method java/lang/Enum."<init>":(Ljava/lang/String;I)V
+727:        6: aload_0
+728:        7: iload         4
+729:        9: putfield      #35                 // Field processes:I
+730:       12: aload_0
+731:       13: aload_3
+732:       14: putfield      #39                 // Field baseTier:Lmekanism/api/tier/BaseTier;
+733:       17: return
+734: 
+
+--- original lines 765-805 ---
+765:   static {};
+766:     descriptor: ()V
+767:     Code:
+768:        0: new           #1                  // class mekanism/common/tier/FactoryTier
+769:        3: dup
+770:        4: ldc           #43                 // String BASIC
+771:        6: iconst_0
+772:        7: getstatic     #44                 // Field mekanism/api/tier/BaseTier.BASIC:Lmekanism/api/tier/BaseTier;
+773:       10: iconst_3
+774:       11: invokespecial #48                 // Method "<init>":(Ljava/lang/String;ILmekanism/api/tier/BaseTier;I)V
+775:       14: putstatic     #3                  // Field BASIC:Lmekanism/common/tier/FactoryTier;
+776:       17: new           #1                  // class mekanism/common/tier/FactoryTier
+777:       20: dup
+778:       21: ldc           #51                 // String ADVANCED
+779:       23: iconst_1
+780:       24: getstatic     #52                 // Field mekanism/api/tier/BaseTier.ADVANCED:Lmekanism/api/tier/BaseTier;
+781:       27: iconst_5
+782:       28: invokespecial #48                 // Method "<init>":(Ljava/lang/String;ILmekanism/api/tier/BaseTier;I)V
+783:       31: putstatic     #7                  // Field ADVANCED:Lmekanism/common/tier/FactoryTier;
+784:       34: new           #1                  // class mekanism/common/tier/FactoryTier
+785:       37: dup
+786:       38: ldc           #54                 // String ELITE
+787:       40: iconst_2
+788:       41: getstatic     #55                 // Field mekanism/api/tier/BaseTier.ELITE:Lmekanism/api/tier/BaseTier;
+789:       44: bipush        7
+790:       46: invokespecial #48                 // Method "<init>":(Ljava/lang/String;ILmekanism/api/tier/BaseTier;I)V
+791:       49: putstatic     #10                 // Field ELITE:Lmekanism/common/tier/FactoryTier;
+792:       52: new           #1                  // class mekanism/common/tier/FactoryTier
+793:       55: dup
+794:       56: ldc           #57                 // String ULTIMATE
+795:       58: iconst_3
+796:       59: getstatic     #58                 // Field mekanism/api/tier/BaseTier.ULTIMATE:Lmekanism/api/tier/BaseTier;
+797:       62: bipush        9
+798:       64: invokespecial #48                 // Method "<init>":(Ljava/lang/String;ILmekanism/api/tier/BaseTier;I)V
+799:       67: putstatic     #13                 // Field ULTIMATE:Lmekanism/common/tier/FactoryTier;
+800:       70: invokestatic  #60                 // Method $values:()[Lmekanism/common/tier/FactoryTier;
+801:       73: putstatic     #16                 // Field $VALUES:[Lmekanism/common/tier/FactoryTier;
+802:       76: return
+803: }
+804: ====================================================================================================
+805: CLASS: mekanism.common.lib.transmitter.ConnectionType
+

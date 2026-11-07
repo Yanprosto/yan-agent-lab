@@ -1,0 +1,108 @@
+Source: targeted_javap.txt in MEKANISM_TARGETED_RECON_20261011_012311.zip
+Original line numbers are preserved below.
+
+--- original lines 3318-3420 ---
+3318: 
+3319:   public void onUpdateServer();
+3320:     descriptor: ()V
+3321:     Code:
+3322:        0: aload_0
+3323:        1: invokevirtual #217                // Method getTransmitterNetwork:()Lmekanism/common/lib/transmitter/DynamicNetwork;
+3324:        4: ifnull        1066
+3325:        7: aload_0
+3326:        8: getfield      #31                 // Field delay:I
+3327:       11: ifle          27
+3328:       14: aload_0
+3329:       15: dup
+3330:       16: getfield      #31                 // Field delay:I
+3331:       19: iconst_1
+3332:       20: isub
+3333:       21: putfield      #31                 // Field delay:I
+3334:       24: goto          182
+3335:       27: aload_0
+3336:       28: iconst_3
+3337:       29: putfield      #31                 // Field delay:I
+3338:       32: getstatic     #221                // Field mekanism/common/util/EnumUtils.DIRECTIONS:[Lnet/minecraft/core/Direction;
+3339:       35: astore_1
+3340:       36: aload_1
+3341:       37: arraylength
+3342:       38: istore_2
+3343:       39: iconst_0
+3344:       40: istore_3
+3345:       41: iload_3
+3346:       42: iload_2
+3347:       43: if_icmpge     182
+3348:       46: aload_1
+3349:       47: iload_3
+3350:       48: aaload
+3351:       49: astore        4
+3352:       51: aload_0
+3353:       52: aload         4
+3354:       54: getstatic     #227                // Field mekanism/common/lib/transmitter/ConnectionType.PULL:Lmekanism/common/lib/transmitter/ConnectionType;
+3355:       57: invokevirtual #231                // Method isConnectionType:(Lnet/minecraft/core/Direction;Lmekanism/common/lib/transmitter/ConnectionType;)Z
+3356:       60: ifne          66
+3357:       63: goto          176
+3358:       66: aload_0
+3359:       67: aload         4
+3360:       69: invokevirtual #235                // Method getCapForSide:(Lnet/minecraft/core/Direction;)Lnet/neoforged/neoforge/items/IItemHandler;
+3361:       72: astore        5
+3362:       74: aload         5
+3363:       76: ifnull        176
+3364:       79: aload         5
+3365:       81: aload_0
+3366:       82: getfield      #55                 // Field tier:Lmekanism/common/tier/TransporterTier;
+3367:       85: invokevirtual #239                // Method mekanism/common/tier/TransporterTier.getPullAmount:()I
+3368:       88: invokestatic  #242                // Method mekanism/common/lib/inventory/TransitRequest.anyItem:(Lnet/neoforged/neoforge/items/IItemHandler;I)Lmekanism/common/lib/inventory/TransitRequest;
+3369:       91: astore        6
+3370:       93: aload         6
+3371:       95: invokevirtual #248                // Method mekanism/common/lib/inventory/TransitRequest.isEmpty:()Z
+3372:       98: ifne          176
+3373:      101: aload_0
+3374:      102: aconst_null
+3375:      103: aload_0
+3376:      104: invokevirtual #78                 // Method getBlockPos:()Lnet/minecraft/core/BlockPos;
+3377:      107: aload         4
+3378:      109: invokevirtual #82                 // Method net/minecraft/core/BlockPos.relative:(Lnet/minecraft/core/Direction;)Lnet/minecraft/core/BlockPos;
+3379:      112: aload         6
+3380:      114: aload_0
+3381:      115: invokevirtual #172                // Method getColor:()Lmekanism/api/text/EnumColor;
+3382:      118: iconst_1
+3383:      119: iconst_0
+3384:      120: invokevirtual #251                // Method insert:(Lnet/minecraft/world/level/block/entity/BlockEntity;Lnet/minecraft/core/BlockPos;Lmekanism/common/lib/inventory/TransitRequest;Lmekanism/api/text/EnumColor;ZI)Lmekanism/common/lib/inventory/TransitRequest$TransitResponse;
+3385:      123: astore        7
+3386:      125: aload         7
+3387:      127: invokevirtual #255                // Method mekanism/common/lib/inventory/TransitRequest$TransitResponse.isEmpty:()Z
+3388:      130: ifeq          164
+3389:      133: aload_0
+3390:      134: dup
+3391:      135: getfield      #34                 // Field delayCount:I
+3392:      138: iconst_1
+3393:      139: iadd
+3394:      140: putfield      #34                 // Field delayCount:I
+3395:      143: aload_0
+3396:      144: bipush        40
+3397:      146: aload_0
+3398:      147: getfield      #34                 // Field delayCount:I
+3399:      150: i2d
+3400:      151: invokestatic  #260                // Method java/lang/Math.exp:(D)D
+3401:      154: d2i
+3402:      155: invokestatic  #211                // Method java/lang/Math.min:(II)I
+3403:      158: putfield      #31                 // Field delay:I
+3404:      161: goto          176
+3405:      164: aload         7
+3406:      166: invokevirtual #264                // Method mekanism/common/lib/inventory/TransitRequest$TransitResponse.useAll:()Lnet/minecraft/world/item/ItemStack;
+3407:      169: pop
+3408:      170: aload_0
+3409:      171: bipush        10
+3410:      173: putfield      #31                 // Field delay:I
+3411:      176: iinc          3, 1
+3412:      179: goto          41
+3413:      182: aload_0
+3414:      183: getfield      #18                 // Field transit:Lit/unimi/dsi/fastutil/ints/Int2ObjectMap;
+3415:      186: invokeinterface #270,  1          // InterfaceMethod it/unimi/dsi/fastutil/ints/Int2ObjectMap.isEmpty:()Z
+3416:      191: ifne          1066
+3417:      194: aload_0
+3418:      195: invokevirtual #271                // Method getWorldPositionLong:()J
+3419:      198: lstore_1
+3420:      199: aload_0
+

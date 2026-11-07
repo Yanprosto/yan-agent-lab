@@ -5,6 +5,7 @@ import com.mcbuild.mod.command.ProjectCommand;
 import com.mcbuild.mod.command.YanEnvironmentCommand;
 import com.mcbuild.mod.command.YanExperimentCommand;
 import com.mcbuild.mod.command.YanFunctionalCommand;
+import com.mcbuild.mod.command.YanLabCommand;
 import com.mcbuild.mod.command.YanMekanismExperimentCommand;
 import com.mcbuild.mod.command.YanMissionCommand;
 import com.mcbuild.mod.command.YanIndustryCommand;
@@ -35,6 +36,7 @@ public class McbuildMod {
             YanEnvironmentCommand.register(event.getDispatcher());
             YanMissionCommand.register(event.getDispatcher());
             YanIndustryCommand.register(event.getDispatcher());
+            YanLabCommand.register(event.getDispatcher());
         }
 
         @SubscribeEvent

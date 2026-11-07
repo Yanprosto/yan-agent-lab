@@ -1,0 +1,89 @@
+Source: targeted_javap.txt in MEKANISM_TARGETED_RECON_20261011_012311.zip
+Original line numbers are preserved below.
+
+--- original lines 8630-8675 ---
+8630:        0: aload_0
+8631:        1: invokevirtual #603                // Method validateSecurityIsPublic:()V
+8632:        4: aload_0
+8633:        5: getfield      #181                // Field singleItem:Z
+8634:        8: iload_1
+8635:        9: if_icmpeq     16
+8636:       12: aload_0
+8637:       13: invokevirtual #606                // Method toggleSingleItem:()V
+8638:       16: return
+8639: 
+8640:   void setRoundRobin(boolean) throws mekanism.common.integration.computer.ComputerException;
+8641:     descriptor: (Z)V
+8642:     Code:
+8643:        0: aload_0
+8644:        1: invokevirtual #603                // Method validateSecurityIsPublic:()V
+8645:        4: aload_0
+8646:        5: getfield      #380                // Field roundRobin:Z
+8647:        8: iload_1
+8648:        9: if_icmpeq     16
+8649:       12: aload_0
+8650:       13: invokevirtual #609                // Method toggleRoundRobin:()V
+8651:       16: return
+8652: 
+8653:   void setAutoMode(boolean) throws mekanism.common.integration.computer.ComputerException;
+8654:     descriptor: (Z)V
+8655:     Code:
+8656:        0: aload_0
+8657:        1: invokevirtual #603                // Method validateSecurityIsPublic:()V
+8658:        4: aload_0
+8659:        5: getfield      #215                // Field autoEject:Z
+8660:        8: iload_1
+8661:        9: if_icmpeq     16
+8662:       12: aload_0
+8663:       13: invokevirtual #612                // Method toggleAutoEject:()V
+8664:       16: return
+8665: 
+8666:   void clearDefaultColor() throws mekanism.common.integration.computer.ComputerException;
+8667:     descriptor: ()V
+8668:     Code:
+8669:        0: aload_0
+8670:        1: invokevirtual #603                // Method validateSecurityIsPublic:()V
+8671:        4: aload_0
+8672:        5: aconst_null
+8673:        6: invokevirtual #615                // Method changeColor:(Lmekanism/api/text/EnumColor;)V
+8674:        9: return
+8675: 
+
+--- original lines 8760-8795 ---
+8760:   private int lambda$addContainerTrackers$5();
+8761:     descriptor: ()I
+8762:     Code:
+8763:        0: aload_0
+8764:        1: getfield      #224                // Field color:Lmekanism/api/text/EnumColor;
+8765:        4: invokestatic  #645                // Method mekanism/common/util/TransporterUtils.getColorIndex:(Lmekanism/api/text/EnumColor;)I
+8766:        7: ireturn
+8767: 
+8768:   private void lambda$addContainerTrackers$4(boolean);
+8769:     descriptor: (Z)V
+8770:     Code:
+8771:        0: aload_0
+8772:        1: iload_1
+8773:        2: putfield      #181                // Field singleItem:Z
+8774:        5: return
+8775: 
+8776:   private void lambda$addContainerTrackers$3(boolean);
+8777:     descriptor: (Z)V
+8778:     Code:
+8779:        0: aload_0
+8780:        1: iload_1
+8781:        2: putfield      #380                // Field roundRobin:Z
+8782:        5: return
+8783: 
+8784:   private void lambda$addContainerTrackers$2(boolean);
+8785:     descriptor: (Z)V
+8786:     Code:
+8787:        0: aload_0
+8788:        1: iload_1
+8789:        2: putfield      #215                // Field autoEject:Z
+8790:        5: return
+8791: 
+8792:   private static int lambda$new$1();
+8793:     descriptor: ()I
+8794:     Code:
+8795:        0: iconst_3
+

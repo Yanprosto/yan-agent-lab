@@ -1,0 +1,53 @@
+{
+  "status": "source_backed_defaults_not_effective_world_configuration",
+  "jar_sha256": "004dbc9f3106f4d192aeaa1ee1190dd16ec9ca8059ed3d093b80034f4c574f43",
+  "transporters": {
+    "tier_defaults": {
+      "basic": {
+        "pull": 1,
+        "speed": 5
+      },
+      "advanced": {
+        "pull": 16,
+        "speed": 10
+      },
+      "elite": {
+        "pull": 32,
+        "speed": 20
+      },
+      "ultimate": {
+        "pull": 64,
+        "speed": 50
+      }
+    },
+    "speed_unit": "internal progress increment, not blocks/tick",
+    "connection_modes": [
+      "NORMAL",
+      "PUSH",
+      "PULL",
+      "NONE"
+    ],
+    "config_overrides_supported": true,
+    "universal_11_tick_pull_claim": "not confirmed; use source delay/backoff semantics"
+  },
+  "factory_parallel_processes": {
+    "basic": 3,
+    "advanced": 5,
+    "elite": 7,
+    "ultimate": 9
+  },
+  "energized_smelter": {
+    "base_ticks": 200,
+    "default_energy_j_per_tick": 50,
+    "default_capacity_j": 20000,
+    "derived_unmodified_energy_j_per_operation": 10000
+  },
+  "sorter_options": [
+    "autoEject",
+    "roundRobin",
+    "singleItem"
+  ],
+  "effective_configs_and_upgrades": "not captured by these archives",
+  "recipes": "resource paths indexed; not a complete resolved runtime RecipeManager export",
+  "universal_modder_execution": "not evidenced in recovered audit"
+}

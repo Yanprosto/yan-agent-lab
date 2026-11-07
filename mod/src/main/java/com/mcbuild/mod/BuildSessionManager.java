@@ -32,6 +32,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.common.util.FakePlayerFactory;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
@@ -138,8 +139,21 @@ public final class BuildSessionManager {
             };
         }
 
+        /** Sends a message to the requesting player, or to the server console in headless mode. */
+        private void say(String text) {
+            Component message = Component.literal(text);
+            if (player != null) {
+                player.sendSystemMessage(message);
+                return;
+            }
+            MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+            if (server != null) {
+                server.sendSystemMessage(message);
+            }
+        }
+
         public void onChat(String text) {
-            runOnServerThread(() -> player.sendSystemMessage(Component.literal(text)));
+            runOnServerThread(() -> say(text));
         }
 
         public void onBlocks(ProtocolMessages.Blocks blocks) {
@@ -153,8 +167,7 @@ public final class BuildSessionManager {
                         try {
                             state = BlockStateCodec.parse(level.registryAccess(), change.block);
                         } catch (CommandSyntaxException e) {
-                            player.sendSystemMessage(Component.literal(
-                                    chatPrefix + " failed to parse block '" + change.block + "': " + e.getMessage()));
+                            say(chatPrefix + " failed to parse block '" + change.block + "': " + e.getMessage());
                             continue;
                         }
                     }
@@ -207,6 +220,9 @@ public final class BuildSessionManager {
             double reach = 12.0D;
             if (request.args != null && request.args.has("reach")) {
                 reach = Math.max(1.0D, Math.min(64.0D, request.args.get("reach").getAsDouble()));
+            }
+            if (player == null) {
+                throw new IllegalStateException("inspect_target needs a player; not available in headless mode");
             }
             Vec3 start = player.getEyePosition();
             Vec3 end = start.add(player.getLookAngle().scale(reach));
@@ -961,23 +977,25 @@ public final class BuildSessionManager {
                     .getMethod("getFilledEnergyVariant", ItemStack.class)
                     .invoke(null, configured);
 
-            ItemStack previousHand = player.getItemInHand(InteractionHand.MAIN_HAND).copy();
+            // Headless runs have no player: place through NeoForge's fake player instead.
+            ServerPlayer actor = player != null ? player : FakePlayerFactory.getMinecraft(level);
+            ItemStack previousHand = actor.getItemInHand(InteractionHand.MAIN_HAND).copy();
             try {
-                player.setItemInHand(InteractionHand.MAIN_HAND, filled.copy());
+                actor.setItemInHand(InteractionHand.MAIN_HAND, filled.copy());
                 BlockHitResult hit = new BlockHitResult(
                         Vec3.atCenterOf(pos),
                         Direction.UP,
                         pos,
                         false);
-                UseOnContext context = new UseOnContext(player, InteractionHand.MAIN_HAND, hit);
-                InteractionResult placed = player.getItemInHand(InteractionHand.MAIN_HAND).useOn(context);
+                UseOnContext context = new UseOnContext(actor, InteractionHand.MAIN_HAND, hit);
+                InteractionResult placed = actor.getItemInHand(InteractionHand.MAIN_HAND).useOn(context);
                 if (!placed.consumesAction() || level.getBlockState(pos).isAir()) {
                     throw new IllegalStateException(
                             "Charged Creative Energy Cube item placement failed at " + pos.toShortString()
                                     + " result=" + placed);
                 }
             } finally {
-                player.setItemInHand(InteractionHand.MAIN_HAND, previousHand);
+                actor.setItemInHand(InteractionHand.MAIN_HAND, previousHand);
             }
 
             BlockState after = level.getBlockState(pos);
@@ -1160,12 +1178,12 @@ public final class BuildSessionManager {
         }
 
         public void onFinish(String summary) {
-            runOnServerThread(() -> player.sendSystemMessage(Component.literal(chatPrefix + " " + summary)));
+            runOnServerThread(() -> say(chatPrefix + " " + summary));
             clear(this);
         }
 
         public void onError(String reason) {
-            runOnServerThread(() -> player.sendSystemMessage(Component.literal(chatPrefix + " error: " + reason)));
+            runOnServerThread(() -> say(chatPrefix + " error: " + reason));
             clear(this);
         }
 
