@@ -122,8 +122,21 @@ public final class BuildSessionManager {
             };
         }
 
+        /** Sends a message to the requesting player, or to the server console in headless mode. */
+        private void say(String text) {
+            Component message = Component.literal(text);
+            if (player != null) {
+                player.sendSystemMessage(message);
+                return;
+            }
+            MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+            if (server != null) {
+                server.sendSystemMessage(message);
+            }
+        }
+
         public void onChat(String text) {
-            runOnServerThread(() -> player.sendSystemMessage(Component.literal(text)));
+            runOnServerThread(() -> say(text));
         }
 
         public void onBlocks(ProtocolMessages.Blocks blocks) {
@@ -137,8 +150,7 @@ public final class BuildSessionManager {
                         try {
                             state = BlockStateCodec.parse(level.registryAccess(), change.block);
                         } catch (CommandSyntaxException e) {
-                            player.sendSystemMessage(Component.literal(
-                                    chatPrefix + " failed to parse block '" + change.block + "': " + e.getMessage()));
+                            say(chatPrefix + " failed to parse block '" + change.block + "': " + e.getMessage());
                             continue;
                         }
                     }
@@ -185,6 +197,9 @@ public final class BuildSessionManager {
             double reach = 12.0D;
             if (request.args != null && request.args.has("reach")) {
                 reach = Math.max(1.0D, Math.min(64.0D, request.args.get("reach").getAsDouble()));
+            }
+            if (player == null) {
+                throw new IllegalStateException("inspect_target needs a player; not available in headless mode");
             }
             Vec3 start = player.getEyePosition();
             Vec3 end = start.add(player.getLookAngle().scale(reach));
@@ -647,12 +662,12 @@ public final class BuildSessionManager {
         }
 
         public void onFinish(String summary) {
-            runOnServerThread(() -> player.sendSystemMessage(Component.literal(chatPrefix + " " + summary)));
+            runOnServerThread(() -> say(chatPrefix + " " + summary));
             clear(this);
         }
 
         public void onError(String reason) {
-            runOnServerThread(() -> player.sendSystemMessage(Component.literal(chatPrefix + " error: " + reason)));
+            runOnServerThread(() -> say(chatPrefix + " error: " + reason));
             clear(this);
         }
 
