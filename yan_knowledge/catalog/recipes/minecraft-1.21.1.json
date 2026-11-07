@@ -1,0 +1,1297 @@
+{
+ "source_jar": "minecraft-1.21.1-server-data.jar",
+ "source_jar_sha256": "24a5d2d162cfad2a1a574c4d552e99dc6c6303a49d1e68b43a7b638f3b0930fd",
+ "evidence": "source_default",
+ "types": [
+  "minecraft:smelting"
+ ],
+ "recipe_count": 70,
+ "recipes": [
+  {
+   "id": "minecraft:baked_potato",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:potato",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:baked_potato",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:black_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:black_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:black_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:blue_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:blue_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:blue_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:brick",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:clay_ball",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:brick",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:brown_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:brown_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:brown_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:charcoal",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "tag": "minecraft:logs_that_burn",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:charcoal",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:coal_from_smelting_coal_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:coal_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:coal",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:coal_from_smelting_deepslate_coal_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:deepslate_coal_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:coal",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:cooked_beef",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:beef",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:cooked_beef",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:cooked_chicken",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:chicken",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:cooked_chicken",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:cooked_cod",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:cod",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:cooked_cod",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:cooked_mutton",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:mutton",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:cooked_mutton",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:cooked_porkchop",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:porkchop",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:cooked_porkchop",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:cooked_rabbit",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:rabbit",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:cooked_rabbit",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:cooked_salmon",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:salmon",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:cooked_salmon",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:copper_ingot_from_smelting_copper_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:copper_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:copper_ingot",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:copper_ingot_from_smelting_deepslate_copper_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:deepslate_copper_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:copper_ingot",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:copper_ingot_from_smelting_raw_copper",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:raw_copper",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:copper_ingot",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:cracked_deepslate_bricks",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:deepslate_bricks",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:cracked_deepslate_bricks",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:cracked_deepslate_tiles",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:deepslate_tiles",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:cracked_deepslate_tiles",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:cracked_nether_bricks",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:nether_bricks",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:cracked_nether_bricks",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:cracked_polished_blackstone_bricks",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:polished_blackstone_bricks",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:cracked_polished_blackstone_bricks",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:cracked_stone_bricks",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:stone_bricks",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:cracked_stone_bricks",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:cyan_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:cyan_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:cyan_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:deepslate",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:cobbled_deepslate",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:deepslate",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:diamond_from_smelting_deepslate_diamond_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:deepslate_diamond_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:diamond",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:diamond_from_smelting_diamond_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:diamond_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:diamond",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:dried_kelp_from_smelting",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:kelp",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:dried_kelp",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:emerald_from_smelting_deepslate_emerald_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:deepslate_emerald_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:emerald",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:emerald_from_smelting_emerald_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:emerald_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:emerald",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:glass",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "tag": "minecraft:smelts_to_glass",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:glass",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:gold_ingot_from_smelting_deepslate_gold_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:deepslate_gold_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:gold_ingot",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:gold_ingot_from_smelting_gold_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:gold_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:gold_ingot",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:gold_ingot_from_smelting_nether_gold_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:nether_gold_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:gold_ingot",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:gold_ingot_from_smelting_raw_gold",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:raw_gold",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:gold_ingot",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:gold_nugget_from_smelting",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "any_of": [
+      {
+       "item": "minecraft:golden_pickaxe",
+       "count": 1
+      },
+      {
+       "item": "minecraft:golden_shovel",
+       "count": 1
+      },
+      {
+       "item": "minecraft:golden_axe",
+       "count": 1
+      },
+      {
+       "item": "minecraft:golden_hoe",
+       "count": 1
+      },
+      {
+       "item": "minecraft:golden_sword",
+       "count": 1
+      },
+      {
+       "item": "minecraft:golden_helmet",
+       "count": 1
+      },
+      {
+       "item": "minecraft:golden_chestplate",
+       "count": 1
+      },
+      {
+       "item": "minecraft:golden_leggings",
+       "count": 1
+      },
+      {
+       "item": "minecraft:golden_boots",
+       "count": 1
+      },
+      {
+       "item": "minecraft:golden_horse_armor",
+       "count": 1
+      }
+     ]
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:gold_nugget",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:gray_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:gray_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:gray_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:green_dye",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:cactus",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:green_dye",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:green_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:green_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:green_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:iron_ingot_from_smelting_deepslate_iron_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:deepslate_iron_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:iron_ingot",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:iron_ingot_from_smelting_iron_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:iron_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:iron_ingot",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:iron_ingot_from_smelting_raw_iron",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:raw_iron",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:iron_ingot",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:iron_nugget_from_smelting",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "any_of": [
+      {
+       "item": "minecraft:iron_pickaxe",
+       "count": 1
+      },
+      {
+       "item": "minecraft:iron_shovel",
+       "count": 1
+      },
+      {
+       "item": "minecraft:iron_axe",
+       "count": 1
+      },
+      {
+       "item": "minecraft:iron_hoe",
+       "count": 1
+      },
+      {
+       "item": "minecraft:iron_sword",
+       "count": 1
+      },
+      {
+       "item": "minecraft:iron_helmet",
+       "count": 1
+      },
+      {
+       "item": "minecraft:iron_chestplate",
+       "count": 1
+      },
+      {
+       "item": "minecraft:iron_leggings",
+       "count": 1
+      },
+      {
+       "item": "minecraft:iron_boots",
+       "count": 1
+      },
+      {
+       "item": "minecraft:iron_horse_armor",
+       "count": 1
+      },
+      {
+       "item": "minecraft:chainmail_helmet",
+       "count": 1
+      },
+      {
+       "item": "minecraft:chainmail_chestplate",
+       "count": 1
+      },
+      {
+       "item": "minecraft:chainmail_leggings",
+       "count": 1
+      },
+      {
+       "item": "minecraft:chainmail_boots",
+       "count": 1
+      }
+     ]
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:iron_nugget",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:lapis_lazuli_from_smelting_deepslate_lapis_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:deepslate_lapis_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:lapis_lazuli",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:lapis_lazuli_from_smelting_lapis_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:lapis_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:lapis_lazuli",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:light_blue_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:light_blue_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:light_blue_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:light_gray_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:light_gray_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:light_gray_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:lime_dye_from_smelting",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:sea_pickle",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:lime_dye",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:lime_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:lime_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:lime_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:magenta_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:magenta_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:magenta_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:nether_brick",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:netherrack",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:nether_brick",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:netherite_scrap",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:ancient_debris",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:netherite_scrap",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:orange_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:orange_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:orange_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:pink_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:pink_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:pink_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:popped_chorus_fruit",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:chorus_fruit",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:popped_chorus_fruit",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:purple_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:purple_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:purple_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:quartz",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:nether_quartz_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:quartz",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:red_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:red_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:red_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:redstone_from_smelting_deepslate_redstone_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:deepslate_redstone_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:redstone",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:redstone_from_smelting_redstone_ore",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:redstone_ore",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:redstone",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:smooth_basalt",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:basalt",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:smooth_basalt",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:smooth_quartz",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:quartz_block",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:smooth_quartz",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:smooth_red_sandstone",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:red_sandstone",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:smooth_red_sandstone",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:smooth_sandstone",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:sandstone",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:smooth_sandstone",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:smooth_stone",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:stone",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:smooth_stone",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:sponge",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:wet_sponge",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:sponge",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:stone",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:cobblestone",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:stone",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:clay",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:white_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:white_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:white_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  },
+  {
+   "id": "minecraft:yellow_glazed_terracotta",
+   "type": "minecraft:smelting",
+   "inputs": [
+    {
+     "item": "minecraft:yellow_terracotta",
+     "count": 1
+    }
+   ],
+   "outputs": [
+    {
+     "item": "minecraft:yellow_glazed_terracotta",
+     "count": 1
+    }
+   ],
+   "cooking_ticks": 200
+  }
+ ]
+}
