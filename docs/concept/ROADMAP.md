@@ -78,7 +78,9 @@ Ordered steps:
    power ports on its boundary.
    *Done when:* a shop is built from its module description in two different
    volumes and passes; its ports are recorded.
-3. **District from shops + trunk lines** (mode B). Shared power backbone and freight
+3. **District from shops + trunk lines** (mode B). ✓ 2026-11-07: two shops 24 blocks apart, one
+   power source, 41-cell backbone, 24-cell freight trunk; generated backbone gap left the
+   second shop dark, stall diagnosed (plan vs scan), one cell re-placed, PASS 6 → 8 (run 20261107T133957Z_district_bd1b7ec7). Shared power backbone and freight
    lines across chunks connect shops; architecture is generated around the layout.
    *Done when:* two shops tens of blocks apart, one power source, one freight trunk,
    pass together; breaking one backbone segment is diagnosed and repaired locally.

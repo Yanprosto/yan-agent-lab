@@ -44,13 +44,15 @@ def _p(pos: tuple[int, int, int]) -> P:
     return P(*pos)
 
 
-async def _build(connection, d: District) -> None:
+async def _build(connection, d: District, *, omit: tuple[int, int, int] | None = None) -> None:
     for i, chest in enumerate(d.chests, start=1):
         await _place(connection, f"d-chest{i}", _p(chest), CHEST)
     for i, m in enumerate(d.machines, start=1):
         await _place(connection, f"d-m{i}", _p(m.pos), m.machine)
     await _action(connection, "d-power", "place_mekanism_filled_energy_cube", _p(d.power_source).args())
     for i, cell in enumerate(d.backbone, start=1):
+        if cell == omit:
+            continue  # generated damage: this backbone cell is missing from the start
         await _place(connection, f"d-cable{i}", _p(cell), CABLE)
     for i, cell in enumerate(d.transporters, start=1):
         await _place(connection, f"d-t{i}", _p(cell), TRANSPORTER)
@@ -108,7 +110,15 @@ async def _read(connection, d: District, label: str) -> dict[str, Any]:
     transit = await _action(
         connection, f"{label}-transit", "mek_read_transit", {"positions": [_p(c).args() for c in d.transporters]}
     )
-    return {"chests": chests, "machines": machines, "transit": int(transit.get("total_items") or 0)}
+    moving = sorted(
+        (row.get("x"), row.get("y"), row.get("z"), row.get("progress")) for row in transit.get("items") or []
+    )
+    return {
+        "chests": chests,
+        "machines": machines,
+        "transit": int(transit.get("total_items") or 0),
+        "moving": moving,
+    }
 
 
 def _break_cell(d: District) -> tuple[tuple[int, int, int], list[int]]:
@@ -210,20 +220,20 @@ async def run_district_session(spec: str, connection) -> None:
     result: dict[str, Any] = {}
     passed = False
     try:
-        await _build(connection, d)
+        damage, cut = _break_cell(d) if inject else (None, [])
+        await _build(connection, d, omit=damage)
+        if damage is not None:
+            await connection.send(
+                protocol.chat(f"[yan-agent] DAMAGE (generated): backbone cell {damage} missing; cuts machines {cut}")
+            )
+            result["damage"] = {"cell": damage, "cut_machines": cut}
         await _wait(connection, "d-power-settle", 60, 8.0)
         energy = await _energy(connection, d, "d-energy")
         await connection.send(protocol.chat(f"[yan-agent] VERIFY BACKBONE: machine energy={energy}"))
-        if any(e <= 0 for e in energy):
-            raise RuntimeError(f"backbone does not power every machine: {energy}")
-
-        if inject:
-            cell, cut = _break_cell(d)
-            await _action(connection, "d-break", "remove_block", _p(cell).args())
-            await connection.send(
-                protocol.chat(f"[yan-agent] DAMAGE: backbone cell {cell} removed (cuts machines {cut})")
-            )
-            result["damage"] = {"cell": cell, "cut_machines": cut}
+        expected_dark = set(cut)
+        wrong = [i for i, e in enumerate(energy) if (e <= 0) != (i in expected_dark)]
+        if wrong:
+            raise RuntimeError(f"backbone power differs from plan (dark expected {sorted(expected_dark)}): {energy}")
 
         seed = scored.source_needed
         seeded = await _action(
@@ -262,6 +272,7 @@ async def run_district_session(spec: str, connection) -> None:
                 last_change = waited
             previous = state
         state["waited_ticks"] = waited
+        state.pop("moving", None)
         result.update(state)
         result["repairs"] = repairs
         passed = (
