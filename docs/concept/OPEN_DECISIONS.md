@@ -33,8 +33,8 @@ confirmation)? Only needed before helper mode.
 
 ## D6. Target environment
 
-Singleplayer test instance only, or must the design hold for a multiplayer server
-(other players' blocks, concurrent sessions, tick budgets shared with others)?
+**Decided 2026-11-07: singleplayer** (the owner plays alone). Multiplayer is out of scope until
+the owner says otherwise; the headless lab stays a dedicated-server stand-in for the integrated server.
 
 ## D7. Language of durable docs
 
@@ -69,6 +69,40 @@ player is away? (GAMEPLAY §1b)
 Wood, food, ores when the whole world is megastructure; which BMC5 parts remain.
 (WORLD §6)
 
+## D14. Where the ground is (height is decided)
+
+Height decided 2026-11-07: **4096 blocks, Y −128 … 3967** (width is practically unlimited, so
+vertical range is a direction, not a record). Open: at which Y the player starts and what "ground"
+means: with the floor fixed at −128, "deeper" has little room, so the start level sits in the
+middle and depth is the tiers below it. (WORLD §3c)
+
+## D17. How narrative locality is applied
+
+Reading (a): everything important right now lies within ~100 blocks of the teleport and the circle
+grows as sectors are restored. Reading (b): the world is a scattering of ~100-block scenes with
+void or road between them. Either way, how does it fit "far runs into the wastes" (GAMEPLAY §1)?
+(WORLD §3d)
+
+## D18. The look of the world
+
+References received 2026-11-07 (REFERENCES.md): BLAME! + Peripeteia + The Ascent + RUINER + Hive Worlds;
+The Arcology and Post Apocalypse City approved (a giant megablock, dozens of which make a world).
+Answered 2026-11-07 (a): no crowds and no living city; the base look is centuries of abandonment, references are used for fabric and scale (REFERENCES.md). Open: (b) how much
+of the surface density is generated automatically (greeble layer) versus authored; (c) palette per
+tier (teal-green, yellow-green, red-orange?); (d) a check in the owner's game (shaders, fog) on a small
+generated piece, since a diagram cannot show atmosphere.
+
+## D15. Client-side check of tall worlds
+
+Server side is verified (docs/recon/TALL_WORLD_SPIKE.md). Needed on the owner's machine: create a
+singleplayer world with the height, run with Distant Horizons and the real pack, look at rendering
+and lighting at 2000+ blocks; then vertical traversal mods (elevators, grapples).
+
+## D16. Dynamic Height license
+
+Jar says CC-BY-NC-ND-4.0, Modrinth page says GPL-3.0-only. Irrelevant for a private pack; resolve
+before the pack is published.
+
 ---
 
 ## Closed decisions
@@ -101,6 +135,21 @@ Wood, food, ores when the whole world is megastructure; which BMC5 parts remain.
   there is lost, including on death mid-cycle. (GAMEPLAY §1a)
 - **2026-11-07 — Immutable teleport zone.** Settlement and warehouse sit in an
   immutable zone around the teleport, untouched by events and rebuilds. Invariant I19.
+- **2026-11-07 — Moddability first.** Minecraft was chosen because it can be built into the best
+  personal pack; vanilla limits are bypassed with mods and datapacks, not designed around. Each mod
+  is checked for version, license and compatibility before adoption (owner's statement).
+- **2026-11-07 — Singleplayer, no Lithium** in the current pack (owner). Closes D6.
+- **2026-11-07 — World height 4096** (Y −128 … 3967); 32k not needed because width is unlimited.
+- **2026-11-07 — Base look = centuries of abandonment.** The reference images show living districts;
+  the world is the same fabric after hundreds of years: decay, no people, people only as scale in
+  references. Light and life appear only through the player's restoration. (REFERENCES.md, D18)
+- **2026-11-07 — First visual sketches rejected** (isometric mock-ups); the look is judged in the
+  game from first person, not in diagrams. (WORLD §3d, D18)
+- **2026-11-07 — Giant forms are enterable (wish).** The owner wants to climb into every form and find
+  something interesting; v1 accepts hollow shells with an opening, interiors come later. (WORLD §3d)
+- **2026-11-07 — Narrative locality** (reference: Peripeteia): despite the vast scale, the story
+  unfolds within about a hundred blocks. The scale is a backdrop to be seen, not a distance to be
+  crossed. (WORLD §3d; reading of the rule is D17)
 - **2026-11-07 — Two generation modes, three scales.** Mode A (world first: fit a
   factory into a given volume; later human workshops) and mode B (factory first:
   process and trunk lines, architecture generated around them; old machine plants,
