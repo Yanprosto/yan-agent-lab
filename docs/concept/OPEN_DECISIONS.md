@@ -87,7 +87,7 @@ void or road between them. Either way, how does it fit "far runs into the wastes
 
 References received 2026-11-07 (REFERENCES.md): BLAME! + Peripeteia + The Ascent + RUINER + Hive Worlds;
 The Arcology and Post Apocalypse City approved (a giant megablock, dozens of which make a world).
-Open: (a) is "inhabited-looking without NPC crowds" right (traces and light, not people); (b) how much
+Answered 2026-11-07 (a): no crowds and no living city; the base look is centuries of abandonment, references are used for fabric and scale (REFERENCES.md). Open: (b) how much
 of the surface density is generated automatically (greeble layer) versus authored; (c) palette per
 tier (teal-green, yellow-green, red-orange?); (d) a check in the owner's game (shaders, fog) on a small
 generated piece, since a diagram cannot show atmosphere.
@@ -140,6 +140,9 @@ before the pack is published.
   is checked for version, license and compatibility before adoption (owner's statement).
 - **2026-11-07 — Singleplayer, no Lithium** in the current pack (owner). Closes D6.
 - **2026-11-07 — World height 4096** (Y −128 … 3967); 32k not needed because width is unlimited.
+- **2026-11-07 — Base look = centuries of abandonment.** The reference images show living districts;
+  the world is the same fabric after hundreds of years: decay, no people, people only as scale in
+  references. Light and life appear only through the player's restoration. (REFERENCES.md, D18)
 - **2026-11-07 — First visual sketches rejected** (isometric mock-ups); the look is judged in the
   game from first person, not in diagrams. (WORLD §3d, D18)
 - **2026-11-07 — Giant forms are enterable (wish).** The owner wants to climb into every form and find
