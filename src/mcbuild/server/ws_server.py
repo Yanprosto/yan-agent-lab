@@ -20,6 +20,7 @@ from mcbuild.server.iron_works_session import run_iron_works_session
 from mcbuild.server.layout_session import run_layout_session
 from mcbuild.server.machine_probe import run_machine_probe_session
 from mcbuild.server.mission_v21 import run_powered_mission_session
+from mcbuild.server.module_session import run_module_session
 from mcbuild.server.plan_session import run_plan_session
 from mcbuild.server.project_session import run_project_session
 from mcbuild.server.run_logger import LoggedConnection, RunRecorder
@@ -62,11 +63,12 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
         "machine",
         "plan",
         "layout",
+        "module",
     }:
         await connection.send(
             protocol.error(
                 'Expected {"cmd": "build|project|probe|functional|experiment|mekanism|splitter|'
-                'environment|mission|industry|machine|plan|layout", ...}.'
+                'environment|mission|industry|machine|plan|layout|module", ...}.'
             )
         )
         return
@@ -108,6 +110,8 @@ async def _handler(connection: ServerConnection, config: Config) -> None:
             await run_plan_session(str(prompt or ""), logged_connection)
         elif command == "layout":
             await run_layout_session(str(prompt or ""), logged_connection)
+        elif command == "module":
+            await run_module_session(str(prompt or ""), logged_connection)
         else:
             normalized_goal = " ".join(str(prompt).lower().strip().split())
             iron_works_aliases = (

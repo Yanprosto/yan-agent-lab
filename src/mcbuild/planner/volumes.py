@@ -75,4 +75,13 @@ VOLUMES: dict[str, Volume] = {
             ((6, 0, 0), (6, 2, 5)),  # wall from the north side, gap only at z 6..8
         ),
     ),
+    # Volumes for placing a whole shop module (M3 step 2).
+    "pillared_hall": Volume(
+        "pillared_hall",
+        size=(18, 3, 9),
+        source=(0, 0, 4),
+        sink=(17, 0, 4),
+        obstacles=tuple(box for x in (4, 9, 14) for box in (((x, 0, 0), (x, 2, 1)), ((x, 0, 7), (x, 2, 8)))),
+    ),
+    "narrow_room": Volume("narrow_room", size=(6, 3, 18), source=(2, 0, 0), sink=(2, 0, 17)),
 }
