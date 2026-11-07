@@ -16,7 +16,12 @@ Model:
 - a machine starts an operation once ``input_count`` of its items have arrived and it is
   free, and each operation takes ``ticks_per_operation`` (catalog);
 - outputs leave the machine through its out segment, queue in the shop's sink chest, and
-  go through one trunk puller to the next shop.
+  go through one trunk puller to the next shop;
+- a stage with several machines is *gated*: its pullers are switched on once the whole
+  batch sits in its source chest. Live run 20261107T145746Z_district_6a94226c showed why:
+  independent pullers on a trickle-fed chest are winner-takes-all (one smelter did 23 of 24
+  operations, 5700 ticks, as slow as a single machine). Pullers started together on a full
+  chest split evenly.
 """
 
 from __future__ import annotations
@@ -51,11 +56,14 @@ def simulate(
     ticks_per_op: list[float],
     per_block: float = 20.0,
     pull_interval: float = DEFAULT_PULL_INTERVAL,
+    gated: list[bool] | None = None,
 ) -> float:
     """Event model over plain numbers: segment lengths per machine and trunk lengths per hop."""
     arrivals = [0.0] * source_amount  # when each item is available in the shop's source chest
     for index, stage in enumerate(stages):
         count = len(in_lens[index])
+        if gated and gated[index] and arrivals:
+            arrivals = [max(arrivals)] * len(arrivals)  # pullers switch on when the batch is complete
         per_machine: list[list[float]] = [[] for _ in range(count)]
         for n, t in enumerate(sorted(arrivals)):
             per_machine[n % count].append(t)
@@ -97,6 +105,7 @@ def estimate_ticks(
         ticks_per_op=[float(catalog.fact(s.stage.machine, "ticks_per_operation") or 200) for s in district.shops],
         per_block=float(catalog.fact(TRANSPORTER, "ticks_per_block") or 20),
         pull_interval=pull_interval,
+        gated=[s.machines > 1 for s in district.shops],
     )
 
 

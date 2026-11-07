@@ -74,12 +74,31 @@ def test_more_machines_on_the_bottleneck_stage_are_faster(catalog, scored24):
     assert loads[1] > loads[0]  # smelting is the bottleneck
 
 
+def test_gated_stage_waits_for_the_whole_batch(catalog):
+    """Live run 20261107T145746Z_district_6a94226c: trickle-fed independent pullers are
+    winner-takes-all, so a multi-machine stage opens its intake only for a full batch; the
+    model must charge that wait (a pipelined estimate was 2776 ticks, the gated run took 3840)."""
+    chain = rank_chains(catalog, "minecraft:iron_ingot", 24, {"minecraft:raw_iron"})[0].chain
+    stages = list(chain.stages)
+    args = ([[1], [1, 1, 1]], [[1], [1, 1, 1]], [24])
+    pipelined = simulate(stages, 18, *args, ticks_per_op=[200, 200], gated=[False, False])
+    gated = simulate(stages, 18, *args, ticks_per_op=[200, 200], gated=[False, True])
+    assert gated > pipelined + 600
+
+
+def test_model_matches_live_gated_district(catalog, scored24):
+    """Run 20261107T150311Z_district_2fcc58da: [1, 3] machines, 24 ingots, observed 3840 ticks at 60-tick polls."""
+    district = plan_district(scored24.chain, [1, 3], gap=24)
+    estimate = estimate_ticks(catalog, district, scored24.source_needed)
+    assert 3780 <= estimate <= 3840 and abs(estimate - 3840) <= 100
+
+
 def test_deadline_planning_grows_only_the_bottleneck(catalog, scored24):
-    _d, counts, estimate = plan_to_deadline(catalog, scored24, 3000)
-    assert counts == [1, 3] and estimate <= 3000
-    _d, counts, _ = plan_to_deadline(catalog, scored24, 4500)
+    _d, counts, estimate = plan_to_deadline(catalog, scored24, 4000)
+    assert counts == [1, 3] and estimate <= 4000
+    _d, counts, _ = plan_to_deadline(catalog, scored24, 4600)
     assert counts == [1, 2]
     _d, counts, _ = plan_to_deadline(catalog, scored24, 99999)
     assert counts == [1, 1]
     with pytest.raises(DistrictError):
-        plan_to_deadline(catalog, scored24, 2000)
+        plan_to_deadline(catalog, scored24, 3000)  # waves cost time: the best estimate is 3060

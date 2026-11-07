@@ -52,7 +52,21 @@ def _p(pos: tuple[int, int, int]) -> P:
     return P(*pos)
 
 
-async def _build(connection, d: District, *, omit: tuple[int, int, int] | None = None) -> None:
+def stage_inputs(chain, source_amount: int) -> list[int]:
+    """Items entering each stage when the source holds ``source_amount``."""
+    amounts = []
+    amount = source_amount
+    for stage in chain.stages:
+        amounts.append(amount)
+        amount = amount * stage.output_count // stage.input_count
+    return amounts
+
+
+async def _build(
+    connection, d: District, *, omit: tuple[int, int, int] | None = None
+) -> dict[int, list[tuple[str, tuple[int, int, int], str]]]:
+    """Build the district; returns the intake pulls of gated shops, switched on later."""
+    gated: dict[int, list[tuple[str, tuple[int, int, int], str]]] = {}
     for i, chest in enumerate(d.chests, start=1):
         await _place(connection, f"d-chest{i}", _p(chest), CHEST)
     for i, m in enumerate(d.machines, start=1):
@@ -89,12 +103,20 @@ async def _build(connection, d: District, *, omit: tuple[int, int, int] | None =
         {**_p(pull_cell).args(), "side": pull_face, "mode": "PULL"},
     )
     k = 0
-    for shop in d.shops:
-        for seg in shop.layout.segments:
+    for index, shop in enumerate(d.shops):
+        for n, seg in enumerate(shop.layout.segments):
             k += 1
+            intake = shop.layout.fan_out and n % 2 == 0  # source -> machine segments of a fan-out shop
+            if intake and index > 0:
+                # Independent pullers on a chest that fills one item at a time are winner-takes-all
+                # (live run 20261107T145746Z_district_6a94226c): keep the intake closed until the
+                # whole batch is in the chest, then switch every puller on together.
+                gated.setdefault(index, []).append((f"d-pull{k}", seg.cells[0], seg.pull_face))
+                continue
             await _configure_transporter_pull(connection, f"d-pull{k}", _p(seg.cells[0]), seg.pull_face)
     for i, trunk in enumerate(d.trunks, start=1):
         await _configure_transporter_pull(connection, f"d-trunk{i}-pull", _p(trunk.cells[0]), trunk.pull_face)
+    return gated
 
 
 async def _energy(connection, d: District, label: str) -> list[int]:
@@ -239,7 +261,9 @@ async def run_district_session(spec: str, connection) -> None:
     passed = False
     try:
         damage, cut = _break_cell(d) if inject else (None, [])
-        await _build(connection, d, omit=damage)
+        pending = await _build(connection, d, omit=damage)
+        entering = stage_inputs(scored.chain, scored.source_needed)
+        gates: list[dict[str, Any]] = []
         if damage is not None:
             await connection.send(
                 protocol.chat(f"[yan-agent] DAMAGE (generated): backbone cell {damage} missing; cuts machines {cut}")
@@ -277,6 +301,19 @@ async def run_district_session(spec: str, connection) -> None:
             state = await _read(connection, d, f"d-{waited}")
             for i, items in enumerate(state["machines"]):
                 busy[i] += 1 if items else 0
+            for shop_index in list(pending):
+                have = state["chests"][2 * shop_index]
+                if have >= entering[shop_index]:
+                    for label, cell, face in pending.pop(shop_index):
+                        await _configure_transporter_pull(connection, label, _p(cell), face)
+                    gates.append({"shop": shop_index, "opened_at_tick": waited, "input_items": have})
+                    await connection.send(
+                        protocol.chat(
+                            f"[yan-agent] GATE OPEN shop {shop_index} at tick {waited}: {have}/{entering[shop_index]} "
+                            f"items in its source chest; starting {d.shops[shop_index].machines} pullers together"
+                        )
+                    )
+                    last_change = waited
             done = state["chests"][-1] >= expected and not any(state["chests"][:-1])
             if done and state["transit"] == 0 and not any(state["machines"]):
                 break
@@ -296,6 +333,7 @@ async def run_district_session(spec: str, connection) -> None:
         state.pop("moving", None)
         result.update(state)
         result["repairs"] = repairs
+        result["gates"] = gates
         result["machines_per_stage"] = counts
         result["busy_polls"] = busy
         result["estimate_ticks"] = round(estimate)
