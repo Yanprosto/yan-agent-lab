@@ -59,3 +59,12 @@ def test_impossible_volume_is_reported(iron_chain):
     tiny = Volume("tiny", size=(3, 1, 1), source=(0, 0, 0), sink=(2, 0, 0))
     with pytest.raises(LayoutError):
         Solver(tiny.expected_free(), tiny.source, tiny.sink).solve(iron_chain)
+
+
+def test_fault_injection_is_off_by_default(monkeypatch):
+    from mcbuild.server import layout_session
+
+    monkeypatch.delenv("YAN_LAYOUT_FAULT", raising=False)
+    assert layout_session._fault_attempt() == 0
+    monkeypatch.setenv("YAN_LAYOUT_FAULT", "1")
+    assert layout_session._fault_attempt() == 1

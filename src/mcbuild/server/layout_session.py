@@ -14,6 +14,7 @@ back with a diagnosis, then the next one is tried.
 from __future__ import annotations
 
 import contextlib
+import os
 from typing import Any
 
 from mcbuild.catalog import load_catalog
@@ -55,7 +56,17 @@ async def scan_free(connection, volume: Volume) -> set[tuple[int, int, int]]:
     return free
 
 
-async def _build(connection, layout: Layout3D, label: str) -> None:
+def _fault_attempt() -> int:
+    """Opt-in fault injection for testing the fallback path (YAN_LAYOUT_FAULT=<attempt>).
+
+    The given attempt skips the PULL on its first transporter, so nothing leaves the
+    source. Off unless the variable is set; never set it for generation.
+    """
+    value = os.environ.get("YAN_LAYOUT_FAULT", "")
+    return int(value) if value.isdigit() else 0
+
+
+async def _build(connection, layout: Layout3D, label: str, *, skip_input_pull: bool = False) -> None:
     await _place(connection, f"{label}-source", _p(layout.source), CHEST)
     await _place(connection, f"{label}-sink", _p(layout.sink), CHEST)
     for i, m in enumerate(layout.machines, start=1):
@@ -85,6 +96,11 @@ async def _build(connection, layout: Layout3D, label: str) -> None:
             {**_p(m.cable).args(), "side": _face(m.cable, m.cube), "mode": "PULL"},
         )
     for i, seg in enumerate(layout.segments, start=1):
+        if i == 1 and skip_input_pull:
+            await connection.send(
+                protocol.chat(f"[yan-agent] FAULT INJECTED {label}: first transporter left without PULL")
+            )
+            continue
         await _configure_transporter_pull(connection, f"{label}-pull{i}", _p(seg.cells[0]), seg.pull_face)
 
 
@@ -120,7 +136,7 @@ async def _try(connection, scored: ScoredChain, layout: Layout3D, attempt: int) 
     catalog = load_catalog()
     chain = scored.chain
     label = f"lay{attempt}"
-    await _build(connection, layout, label)
+    await _build(connection, layout, label, skip_input_pull=_fault_attempt() == attempt)
     await _wait(connection, f"{label}-power-settle", 40, 8.0)
     for i, m in enumerate(layout.machines, start=1):
         energy = await _action(
