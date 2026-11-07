@@ -68,7 +68,9 @@ def ensure_servers(lab: Path) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("experiment", choices=["experiment", "mekanism", "splitter"])
+    parser.add_argument(
+        "experiment", choices=["experiment", "mekanism", "splitter", "environment", "mission", "machine"]
+    )
     parser.add_argument("--lab", type=Path, default=Path(os.environ.get("YAN_LAB_DIR", "~/mc-lab")).expanduser())
     parser.add_argument("--timeout", type=float, default=900)
     parser.add_argument(
@@ -77,6 +79,7 @@ def main() -> int:
         default=40,
         help="server ticks per second (/tick rate); experiments wait in ticks, so this only shortens wall time",
     )
+    parser.add_argument("--spec", default="", help="machine probe: '<block id> [recipe id]' from the catalog")
     parser.add_argument(
         "--pos", default="0 -60 0", help="anchor 'x y z'; missions leave builds standing, so use a fresh spot"
     )
@@ -88,7 +91,9 @@ def main() -> int:
     commands = [
         f"tick rate {args.tick_rate:g}",
         f"forceload add {x - 32} {z - 32} {x + 63} {z + 63}",
-        f"yanlab {args.experiment} {args.pos}",
+        f"yanlab machine {args.pos} {args.spec}"
+        if args.experiment == "machine"
+        else f"yanlab {args.experiment} {args.pos}",
     ]
     print(rcon_client.run(commands))
 
