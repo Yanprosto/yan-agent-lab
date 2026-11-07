@@ -22,6 +22,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import rcon_client  # noqa: E402
 
+from mcbuild.planner.volumes import VOLUMES  # noqa: E402
+
 REPO = Path(__file__).resolve().parents[2]
 VERDICT = re.compile(r"\[yan-agent\] (.*\b(PASS|FAIL)\b.*|.*error: .*)")
 
@@ -69,7 +71,8 @@ def ensure_servers(lab: Path) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "experiment", choices=["experiment", "mekanism", "splitter", "environment", "mission", "machine"]
+        "experiment",
+        choices=["experiment", "mekanism", "splitter", "environment", "mission", "machine", "plan", "layout"],
     )
     parser.add_argument("--lab", type=Path, default=Path(os.environ.get("YAN_LAB_DIR", "~/mc-lab")).expanduser())
     parser.add_argument("--timeout", type=float, default=900)
@@ -79,7 +82,12 @@ def main() -> int:
         default=40,
         help="server ticks per second (/tick rate); experiments wait in ticks, so this only shortens wall time",
     )
-    parser.add_argument("--spec", default="", help="machine probe: '<block id> [recipe id]' from the catalog")
+    parser.add_argument(
+        "--spec",
+        default="",
+        help="machine: '<block id> [recipe]'; plan: '<target> <count> [sources]'; layout: '<target> <count> [sources]'",
+    )
+    parser.add_argument("--volume", default="", help="layout: test volume name (built with fill before the run)")
     parser.add_argument(
         "--pos", default="0 -60 0", help="anchor 'x y z'; missions leave builds standing, so use a fresh spot"
     )
@@ -88,13 +96,16 @@ def main() -> int:
     log = ensure_servers(args.lab)
     offset = log.stat().st_size
     x, _, z = (int(v) for v in args.pos.split())
-    commands = [
-        f"tick rate {args.tick_rate:g}",
-        f"forceload add {x - 32} {z - 32} {x + 63} {z + 63}",
-        f"yanlab machine {args.pos} {args.spec}"
-        if args.experiment == "machine"
-        else f"yanlab {args.experiment} {args.pos}",
-    ]
+    commands = [f"tick rate {args.tick_rate:g}", f"forceload add {x - 32} {z - 32} {x + 63} {z + 63}"]
+    if args.experiment == "layout":
+        volume = VOLUMES[args.volume]
+        ax, ay, az = (int(v) for v in args.pos.split())
+        commands += volume.build_commands((ax, ay, az))
+        commands.append(f"yanlab layout {args.pos} {args.volume} {args.spec}")
+    elif args.experiment in ("machine", "plan"):
+        commands.append(f"yanlab {args.experiment} {args.pos} {args.spec}")
+    else:
+        commands.append(f"yanlab {args.experiment} {args.pos}")
     print(rcon_client.run(commands))
 
     deadline = time.monotonic() + args.timeout
