@@ -1772,6 +1772,50 @@ def _transit_positions(branches: list[BranchRoute]) -> list[dict[str, int]]:
     return result
 
 
+ENV_FLOW_STEP_TICKS = 60
+ENV_FLOW_MAX_TICKS = 1200
+
+
+async def _wait_for_environment_flow(
+    connection: ServerConnection,
+    *,
+    source: tuple[int, int, int],
+    sinks: tuple[tuple[int, int, int], tuple[int, int, int]],
+    branches: list[BranchRoute],
+    label: str,
+) -> dict[str, Any]:
+    """Wait until the routed items settle, then return the observed result.
+
+    A fixed wait cannot fit every route: a basic transporter moves about one block per
+    20 ticks (speed 5 of 100 progress per block, docs/recon/mekanism/oracle_defaults.json),
+    so a 10-block branch needs ~200 ticks for the first item alone. Instead, observe in
+    steps until nothing is in transit, or until transit stops changing (stuck), within a
+    bounded budget.
+    """
+    waited = 0
+    previous: list[tuple[Any, ...]] | None = None
+    result: dict[str, Any] = {}
+    while waited < ENV_FLOW_MAX_TICKS:
+        await _action(
+            connection, f"{label}-flow", "wait_ticks", {"ticks": ENV_FLOW_STEP_TICKS}, timeout=18.0
+        )
+        waited += ENV_FLOW_STEP_TICKS
+        result = await _read_environment_result(
+            connection, source=source, sinks=sinks, branches=branches, label=label
+        )
+        if result["transit"] == 0:
+            break
+        snapshot = sorted(
+            (item.get("x"), item.get("y"), item.get("z"), item.get("progress"))
+            for item in result.get("transit_items") or []
+        )
+        if snapshot == previous:
+            break
+        previous = snapshot
+    result["waited_ticks"] = waited
+    return result
+
+
 async def _read_environment_result(
     connection: ServerConnection,
     *,
@@ -1944,15 +1988,15 @@ async def _run_environment_build_session(connection: ServerConnection) -> None:
             )
             active_branches.append(branch)
 
-        await _action(connection, "env-initial-flow", "wait_ticks", {"ticks": 180}, timeout=18.0)
-        result = await _read_environment_result(
+        result = await _wait_for_environment_flow(
             connection, source=source, sinks=sinks, branches=active_branches, label="env-initial"
         )
         plan_history.append({"plan": current_plan.as_dict(), "result": result})
         await connection.send(protocol.chat(
             f"[yan-agent] OBSERVE initial: source={result['source']} "
             f"sink1={result['left']} sink2={result['right']} transit={result['transit']} "
-            f"total={result['total']} conserved={result['conserved']} pass={result['passed']}"
+            f"total={result['total']} conserved={result['conserved']} pass={result['passed']} "
+            f"waited={result['waited_ticks']}"
         ))
 
         if not result["passed"]:
@@ -2011,14 +2055,7 @@ async def _run_environment_build_session(connection: ServerConnection) -> None:
                     )
                     active_branches[failed_index] = alternative
 
-                    await _action(
-                        connection,
-                        f"repair-{repair_count}-flow",
-                        "wait_ticks",
-                        {"ticks": 180},
-                        timeout=18.0,
-                    )
-                    result = await _read_environment_result(
+                    result = await _wait_for_environment_flow(
                         connection,
                         source=source,
                         sinks=sinks,
@@ -2080,8 +2117,7 @@ async def _run_environment_build_session(connection: ServerConnection) -> None:
                         label=f"fallback-branch-{index}",
                     )
                     active_branches.append(branch)
-                await _action(connection, "env-fallback-flow", "wait_ticks", {"ticks": 180}, timeout=18.0)
-                result = await _read_environment_result(
+                result = await _wait_for_environment_flow(
                     connection, source=source, sinks=sinks, branches=active_branches, label="env-fallback"
                 )
                 plan_history.append({"plan": fallback.as_dict(), "result": result})

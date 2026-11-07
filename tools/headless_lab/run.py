@@ -4,7 +4,7 @@ Usage:
     python tools/headless_lab/run.py splitter [--lab ~/mc-lab] [--timeout 900]
 
 Starts the NeoForge lab server and the Python agent server if they are not
-running, force-loads the lab area, issues `/yanlab <experiment> 0 -60 0` over
+running, force-loads the lab area, issues `/yanlab <experiment> <pos>` over
 RCON and waits for the `[yan-agent] ... PASS|FAIL` line. Exit code 0 on PASS.
 """
 
@@ -71,11 +71,13 @@ def main() -> int:
     parser.add_argument("experiment", choices=["experiment", "mekanism", "splitter"])
     parser.add_argument("--lab", type=Path, default=Path(os.environ.get("YAN_LAB_DIR", "~/mc-lab")).expanduser())
     parser.add_argument("--timeout", type=float, default=900)
+    parser.add_argument("--pos", default="0 -60 0", help="anchor 'x y z'; missions leave builds standing, so use a fresh spot")
     args = parser.parse_args()
 
     log = ensure_servers(args.lab)
     offset = log.stat().st_size
-    print(rcon_client.run(["forceload add -32 -32 63 63", f"yanlab {args.experiment} 0 -60 0"]))
+    x, _, z = (int(v) for v in args.pos.split())
+    print(rcon_client.run([f"forceload add {x - 32} {z - 32} {x + 63} {z + 63}", f"yanlab {args.experiment} {args.pos}"]))
 
     deadline = time.monotonic() + args.timeout
     while time.monotonic() < deadline:
