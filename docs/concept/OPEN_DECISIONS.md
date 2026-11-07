@@ -83,6 +83,15 @@ grows as sectors are restored. Reading (b): the world is a scattering of ~100-bl
 void or road between them. Either way, how does it fit "far runs into the wastes" (GAMEPLAY §1)?
 (WORLD §3d)
 
+## D18. The look of the world
+
+The first sketches were rejected (WORLD §3d). Needed from the owner: which images or scenes are
+"it" (BLAME! panels, Peripeteia screenshots, anything else), what exactly is liked in them, and a
+check in the owner's own game (shaders, light, fog) on a small piece of generated world, since
+an isometric render cannot show atmosphere. Note: Peripeteia (Ninth Exodus) is described by its
+developers as a spiritual successor to Deus Ex (immersive sim); a BLAME! link appears only in
+fan comparisons, so what the owner takes from it must be stated, not assumed.
+
 ## D15. Client-side check of tall worlds
 
 Server side is verified (docs/recon/TALL_WORLD_SPIKE.md). Needed on the owner's machine: create a
@@ -131,6 +140,8 @@ before the pack is published.
   is checked for version, license and compatibility before adoption (owner's statement).
 - **2026-11-07 — Singleplayer, no Lithium** in the current pack (owner). Closes D6.
 - **2026-11-07 — World height 4096** (Y −128 … 3967); 32k not needed because width is unlimited.
+- **2026-11-07 — First visual sketches rejected** (isometric mock-ups); the look is judged in the
+  game from first person, not in diagrams. (WORLD §3d, D18)
 - **2026-11-07 — Giant forms are enterable (wish).** The owner wants to climb into every form and find
   something interesting; v1 accepts hollow shells with an opening, interiors come later. (WORLD §3d)
 - **2026-11-07 — Narrative locality** (reference: Peripeteia): despite the vast scale, the story
