@@ -17,19 +17,37 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 
-from mcbuild.planner.layout3d import DIRS, Layout3D, Segment, Solver, _State, add, direction, neighbours
+from mcbuild.planner.layout3d import DIRS, Layout3D, Segment, Solver, _State, add, direction, neighbours, validate
 from mcbuild.planner.modules import translate
 from mcbuild.planner.process_graph import ProcessChain, Stage
 
 Pos = tuple[int, int, int]
 
-SHOP_BOX = (9, 2, 5)  # open interior for one single-machine shop
+SHOP_BOX = (9, 2, 5)  # open interior for a shop with one or two machines
+MAX_PARALLEL = 3  # per stage: limited by the free faces of the stage's buffer chests
+
+
+def shop_box(machines: int) -> Pos:
+    """Open interior of a shop; three parallel machines need a third layer."""
+    return (SHOP_BOX[0], 3 if machines >= 3 else SHOP_BOX[1], SHOP_BOX[2])
 
 
 @dataclass(frozen=True)
 class Shop:
     stage: Stage
     layout: Layout3D  # district coordinates; machines keep their cable cell, cubes are unused
+    origin: Pos = (0, 0, 0)  # where the shop box starts in district coordinates
+    box: Pos = SHOP_BOX
+
+    @property
+    def machines(self) -> int:
+        return len(self.layout.machines)
+
+    def free_cells(self) -> set[Pos]:
+        ox, oy, oz = self.origin
+        return {
+            (ox + x, oy + y, oz + z) for x in range(self.box[0]) for y in range(self.box[1]) for z in range(self.box[2])
+        }
 
 
 @dataclass(frozen=True)
@@ -64,11 +82,15 @@ class DistrictError(RuntimeError):
     pass
 
 
-def _shop_layout(stage: Stage) -> Layout3D:
-    sx, sy, sz = SHOP_BOX
+def _shop_layout(stage: Stage, machines: int = 1) -> tuple[Layout3D, Pos]:
+    box = shop_box(machines)
+    sx, sy, sz = box
     free = {(x, y, z) for x in range(sx) for y in range(sy) for z in range(sz)}
-    chain = ProcessChain(stage.input_item, stage.output_item, (stage,))
-    return Solver(free, (0, 0, sz // 2), (sx - 1, 0, sz // 2)).solve(chain, limit=1)[0]
+    solver = Solver(free, (0, 0, sz // 2), (sx - 1, 0, sz // 2))
+    if machines == 1:
+        chain = ProcessChain(stage.input_item, stage.output_item, (stage,))
+        return solver.solve(chain, limit=1)[0], box
+    return solver.solve_fan(stage, machines), box
 
 
 def _route_cable(start: Pos, network: set[Pos], blocked: set[Pos], free: set[Pos]) -> list[Pos]:
@@ -94,17 +116,22 @@ def _route_cable(start: Pos, network: set[Pos], blocked: set[Pos], free: set[Pos
     raise DistrictError(f"no cable route from {start} to the backbone")
 
 
-def plan_district(chain: ProcessChain, *, gap: int = 24) -> District:
+def plan_district(chain: ProcessChain, counts: list[int] | None = None, *, gap: int = 24) -> District:
+    """Plan shops (``counts[i]`` parallel machines for stage i, default 1), trunks and backbone."""
     if not chain.stages:
         raise DistrictError("empty chain")
+    counts = counts or [1] * len(chain.stages)
+    if len(counts) != len(chain.stages) or not all(1 <= c <= MAX_PARALLEL for c in counts):
+        raise DistrictError(f"machine counts must be 1..{MAX_PARALLEL} per stage, got {counts}")
     shops = []
-    for index, stage in enumerate(chain.stages):
-        layout = _shop_layout(stage)
-        offset = (index * (SHOP_BOX[0] + gap), 0, 0)
-        shops.append(Shop(stage, translate(layout, offset)))
+    for index, (stage, machines) in enumerate(zip(chain.stages, counts, strict=True)):
+        layout, box = _shop_layout(stage, machines)
+        origin = (index * (SHOP_BOX[0] + gap), 0, 0)
+        shops.append(Shop(stage, translate(layout, origin), origin, box))
 
     span_x = len(shops) * (SHOP_BOX[0] + gap)
-    free = {(x, y, z) for x in range(-2, span_x + 2) for y in range(0, 2) for z in range(-6, SHOP_BOX[2] + 6)}
+    height = max(s.box[1] for s in shops)
+    free = {(x, y, z) for x in range(-2, span_x + 2) for y in range(0, height) for z in range(-6, SHOP_BOX[2] + 6)}
 
     occupied: set[Pos] = set()
     inventories: set[Pos] = set()
@@ -167,6 +194,8 @@ def validate_district(district: District) -> list[str]:
     cells = district.footprint
     if len(cells) != len(set(cells)):
         problems.append("overlapping cells")
+    for i, shop in enumerate(district.shops):
+        problems += [f"shop {i}: {p}" for p in validate(shop.layout, shop.free_cells())]
     trunk_cells = {c for t in district.trunks for c in t.cells}
     inventories = set(district.chests) | {m.pos for m in district.machines} | {district.power_source}
     for i, trunk in enumerate(district.trunks):

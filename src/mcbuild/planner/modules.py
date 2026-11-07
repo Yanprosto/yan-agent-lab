@@ -78,7 +78,7 @@ def rotate(module: ShopModule, turns: int) -> ShopModule:
             for m in lay.machines
         )
         segments = tuple(Segment(tuple(rp(c) for c in s.cells), _ROTATE_FACE[s.pull_face]) for s in lay.segments)
-        new_layout = Layout3D(rp(lay.source), rp(lay.sink), machines, segments)
+        new_layout = Layout3D(rp(lay.source), rp(lay.sink), machines, segments, lay.fan_out)
         ports = tuple(Port(p.role, rp(p.pos), _ROTATE_FACE[p.outward], p.item) for p in result.ports)
         result = ShopModule(
             result.id, result.chain, (size[2], size[1], size[0]), new_layout, ports, result.contract, result.evidence
@@ -98,6 +98,7 @@ def translate(layout: Layout3D, offset: Pos) -> Layout3D:
             for m in layout.machines
         ),
         tuple(Segment(tuple(tp(c) for c in s.cells), s.pull_face) for s in layout.segments),
+        layout.fan_out,
     )
 
 
@@ -195,6 +196,7 @@ def to_json(module: ShopModule) -> dict[str, Any]:
             for m in lay.machines
         ],
         "segments": [{"cells": s.cells, "pull": s.pull_face} for s in lay.segments],
+        "fan_out": lay.fan_out,
         "contract": module.contract,
         "evidence": module.evidence,
     }
@@ -216,7 +218,7 @@ def from_json(data: dict[str, Any]) -> ShopModule:
         data["id"],
         data["chain"],
         t(data["size"]),
-        Layout3D(source, sink, machines, segments),
+        Layout3D(source, sink, machines, segments, bool(data.get("fan_out", False))),
         ports,
         data["contract"],
         data["evidence"],

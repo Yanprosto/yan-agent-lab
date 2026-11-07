@@ -1,17 +1,24 @@
 """District mission (mode B, M3 step 3): shops + freight trunk + one power backbone, live.
 
-Command spec: ``<target item> <count> [sources] [gap=N] [break=0|1]`` (break defaults to 1).
+Command spec: ``<target item> <count> [sources] [gap=N] [break=0|1] [limit=T] [par=a,b,...]``.
+
+- ``limit=T``: total ticks allowed from seeding to the last item in the final sink; machine
+  counts per stage are chosen with the T1-lite model (``mcbuild.planner.estimate``);
+- ``par=a,b,...``: explicit machines per stage instead (1..3 each);
+- ``break=1``: generate the district with one backbone cell missing (default 0).
 
 1. Plan the district from the best catalog chain (one shop per stage) and check it (T0).
 2. Build it on a clear site: chests, machines, one charged power source, the cable
    backbone, shop transporters and the freight trunk(s).
 3. Verify every machine is powered through the backbone.
-4. With break=1, remove one backbone cell that only a downstream shop depends on
-   (simulated damage), then start production.
+4. With break=1, build the district without one backbone cell that only a downstream
+   shop depends on (generated damage), then start production.
 5. When production stalls, diagnose by comparing the planned backbone with a scan of the
    world, re-place only the missing cells (local repair), verify power, and continue.
 6. Check the exact contract across every buffer: source empty, intermediate chests,
-   machines and transporters empty, final sink == planned output. Roll back.
+   machines and transporters empty, final sink == planned output; every machine was busy
+   at some poll; with ``limit`` the run finished in time. Report the T1 estimate against
+   the observed time. Roll back.
 """
 
 from __future__ import annotations
@@ -23,6 +30,7 @@ from typing import Any
 from mcbuild.catalog import load_catalog
 from mcbuild.planner.chain_layout import CABLE, CHEST, TRANSPORTER
 from mcbuild.planner.district import District, DistrictError, plan_district, validate_district
+from mcbuild.planner.estimate import estimate_ticks, plan_to_deadline
 from mcbuild.planner.layout3d import direction, neighbours
 from mcbuild.planner.process_graph import rank_chains
 from mcbuild.server import protocol
@@ -189,7 +197,8 @@ async def run_district_session(spec: str, connection) -> None:
     target, count = words[0], int(words[1])
     sources = set(words[2].split(",")) if len(words) > 2 else {"minecraft:raw_iron"}
     gap = int(options.get("gap", 24))
-    inject = options.get("break", "1") == "1"
+    inject = options.get("break", "0") == "1"
+    limit = int(options["limit"]) if "limit" in options else None
 
     catalog = load_catalog()
     ranked = rank_chains(catalog, target, count, sources)
@@ -198,7 +207,15 @@ async def run_district_session(spec: str, connection) -> None:
         return
     scored = ranked[0]
     try:
-        d = plan_district(scored.chain, gap=gap)
+        if "par" in options:
+            counts = [int(c) for c in options["par"].split(",")]
+            d = plan_district(scored.chain, counts, gap=gap)
+        elif limit is not None:
+            d, counts, _ = plan_to_deadline(catalog, scored, limit, gap=gap)
+        else:
+            counts = [1] * len(scored.chain.stages)
+            d = plan_district(scored.chain, counts, gap=gap)
+        estimate = estimate_ticks(catalog, d, scored.source_needed)
     except Exception as exc:
         await connection.send(protocol.error(f"district plan failed: {exc}"))
         return
@@ -208,8 +225,9 @@ async def run_district_session(spec: str, connection) -> None:
         return
     await connection.send(
         protocol.chat(
-            f"[yan-agent] DISTRICT chain='{scored.chain.id}' shops={len(d.shops)} gap={gap} "
-            f"trunks={[len(t.cells) for t in d.trunks]} backbone={len(d.backbone)} cells power={d.power_source}"
+            f"[yan-agent] DISTRICT chain='{scored.chain.id}' shops={len(d.shops)} machines_per_stage={counts} "
+            f"gap={gap} trunks={[len(t.cells) for t in d.trunks]} backbone={len(d.backbone)} cells "
+            f"power={d.power_source} estimate={estimate:.0f} ticks limit={limit}"
         )
     )
     busy = await _action(connection, "d-site", "inspect_blocks", {"positions": [_p(c).args() for c in d.footprint]})
@@ -251,11 +269,14 @@ async def run_district_session(spec: str, connection) -> None:
         waited = last_change = 0
         previous: dict[str, Any] | None = None
         state: dict[str, Any] = {}
+        busy = [0] * len(d.machines)
         expected = scored.output
         while waited < budget:
             await _action(connection, f"d-flow-{waited}", "wait_ticks", {"ticks": POLL_TICKS}, timeout=20.0)
             waited += POLL_TICKS
             state = await _read(connection, d, f"d-{waited}")
+            for i, items in enumerate(state["machines"]):
+                busy[i] += 1 if items else 0
             done = state["chests"][-1] >= expected and not any(state["chests"][:-1])
             if done and state["transit"] == 0 and not any(state["machines"]):
                 break
@@ -275,12 +296,21 @@ async def run_district_session(spec: str, connection) -> None:
         state.pop("moving", None)
         result.update(state)
         result["repairs"] = repairs
+        result["machines_per_stage"] = counts
+        result["busy_polls"] = busy
+        result["estimate_ticks"] = round(estimate)
+        result["limit"] = limit
+        result["estimate_error_pct"] = round(100 * (waited - estimate) / estimate, 1)
+        in_time = limit is None or waited <= limit
+        result["in_time"] = in_time
         passed = (
             state["chests"][-1] == expected
             and not any(state["chests"][:-1])
             and not any(state["machines"])
             and state["transit"] == 0
             and (not inject or any(r["missing"] for r in repairs))
+            and all(b > 0 for b in busy)
+            and in_time
         )
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
@@ -293,12 +323,16 @@ async def run_district_session(spec: str, connection) -> None:
         await connection.send(protocol.error(f"district v1 FAIL: {result}"))
         return
     save_skill(
-        "district_" + "_".join(s.stage.machine.split(":")[1] for s in d.shops) + "_v1",
+        "district_" + "_".join(f"{s.stage.machine.split(':')[1]}x{s.machines}" for s in d.shops) + "_v1",
         description=f"District: {len(d.shops)} shops, freight trunk, one power backbone; chain {scored.chain.id}",
         implementation={
             "chain": scored.chain.id,
             "gap": gap,
-            "shops": [{"machine": s.stage.machine, "source": s.layout.source, "sink": s.layout.sink} for s in d.shops],
+            "machines_per_stage": counts,
+            "shops": [
+                {"machine": s.stage.machine, "machines": s.machines, "source": s.layout.source, "sink": s.layout.sink}
+                for s in d.shops
+            ],
             "trunks": [{"cells": t.cells, "pull": t.pull_face} for t in d.trunks],
             "power_source": d.power_source,
             "backbone": d.backbone,
@@ -308,7 +342,9 @@ async def run_district_session(spec: str, connection) -> None:
     )
     await connection.send(
         protocol.finish(
-            f"district v1 PASS: shops={len(d.shops)} gap={gap} output={result['chests'][-1]}/{expected} "
+            f"district v1 PASS: shops={len(d.shops)} machines_per_stage={counts} "
+            f"output={result['chests'][-1]}/{expected} busy_polls={busy} "
+            f"ticks={result['waited_ticks']} estimate={result['estimate_ticks']} limit={limit} "
             f"damage={result.get('damage', {}).get('cell')} repairs={len(result['repairs'])} "
             f"worldClean={str(result['world_clean']).lower()}"
         )

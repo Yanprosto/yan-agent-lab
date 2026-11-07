@@ -22,7 +22,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field, replace
 
-from mcbuild.planner.process_graph import ProcessChain
+from mcbuild.planner.process_graph import ProcessChain, Stage
 
 Pos = tuple[int, int, int]
 
@@ -75,6 +75,17 @@ class Layout3D:
     sink: Pos
     machines: tuple[MachinePlace, ...]
     segments: tuple[Segment, ...]
+    # False: a linear chain source -> m1 -> ... -> sink, segment i joins chain_inv[i] and [i + 1].
+    # True: one stage with several parallel machines; segments are in_0, out_0, in_1, out_1, ...
+    # (source -> m_j and m_j -> sink), every machine fed by its own independent PULL transporter.
+    fan_out: bool = False
+
+    def links(self) -> list[tuple[Pos, Pos]]:
+        """(upstream inventory, downstream inventory) for every segment, in segment order."""
+        if self.fan_out:
+            return [pair for m in self.machines for pair in ((self.source, m.pos), (m.pos, self.sink))]
+        chain_inv = [self.source, *(m.pos for m in self.machines), self.sink]
+        return list(zip(chain_inv, chain_inv[1:], strict=False))
 
     @property
     def transporters(self) -> list[Pos]:
@@ -209,6 +220,94 @@ class Solver:
         cells.sort(key=lambda c: (sum(abs(c[i] - target[i]) for i in range(3)), c))
         return cells[: self.candidates]
 
+    # --- fan-out: one stage, several parallel machines ---
+    def solve_fan(self, stage: Stage, count: int, *, attempts: int = 12) -> Layout3D:
+        """Place ``count`` parallel machines between ``source`` and ``sink``.
+
+        Every machine gets its own independent segment source -> machine (first cell PULLs
+        from the source chest) and machine -> sink (first cell PULLs from the machine).
+        This is the live-verified dual-independent-PULL pattern; a shared T-junction would
+        starve a branch. Depth-first with backtracking over candidate machine cells.
+        """
+        xs = [c[0] for c in self.free]
+        ys = [c[1] for c in self.free]
+        zs = [c[2] for c in self.free]
+        mid_x = (min(xs) + max(xs)) / 2
+        start = _State(
+            machines=(),
+            segments=(),
+            occupied=frozenset({self.source, self.sink}),
+            inventories=frozenset({self.source, self.sink}),
+            transporters=frozenset(),
+            last=self.source,
+        )
+
+        def targets(j: int) -> tuple[float, float, float]:
+            span = max(zs) - min(zs)
+            return (mid_x, float(min(ys)), min(zs) + span * (j + 0.5) / count)
+
+        def place(j: int, state: _State) -> _State | None:
+            if j == count:
+                return state
+            target = targets(j)
+            cells = [
+                c
+                for c in self.free
+                if c not in state.occupied and not any(n in state.transporters for n in neighbours(c))
+            ]
+            cells.sort(key=lambda c: (sum(abs(c[i] - target[i]) for i in range(3)), c))
+            for m in cells[: self.candidates]:
+                nxt = self._place_fan_machine(state, stage, m)
+                if nxt is None:
+                    continue
+                done = place(j + 1, nxt)
+                if done is not None:
+                    return done
+                attempts_left[0] -= 1
+                if attempts_left[0] <= 0:
+                    return None
+            return None
+
+        attempts_left = [attempts * count]
+        final = place(0, start)
+        if final is None:
+            raise LayoutError(f"no fan-out placement for {count} x {stage.machine}")
+        return Layout3D(self.source, self.sink, final.machines, final.segments, True)
+
+    def _place_fan_machine(self, state: _State, stage: Stage, m: Pos) -> _State | None:
+        path_in = self.route(state, self.source, set(DIRS), m, extra_inv=frozenset({m}))
+        if not path_in:
+            return None
+        in_face = direction(m, path_in[-1])
+        power = self._power(state, m, path_in, {in_face})
+        if not power:
+            return None
+        energy_face, cable, cube = power
+        with_in = _State(
+            machines=state.machines,
+            segments=state.segments,
+            occupied=state.occupied | {m, cable, cube, *path_in},
+            inventories=state.inventories | {m, cube},
+            transporters=state.transporters | set(path_in),
+            last=m,
+        )
+        path_out = self.route(with_in, m, set(DIRS) - {in_face, energy_face}, self.sink)
+        if not path_out:
+            return None
+        place = MachinePlace(stage.machine, m, in_face, energy_face, cable, cube, direction(m, path_out[0]))
+        return _State(
+            machines=(*state.machines, place),
+            segments=(
+                *state.segments,
+                Segment(tuple(path_in), direction(path_in[0], self.source)),
+                Segment(tuple(path_out), direction(path_out[0], m)),
+            ),
+            occupied=with_in.occupied | set(path_out),
+            inventories=with_in.inventories,
+            transporters=with_in.transporters | set(path_out),
+            last=m,
+        )
+
     # --- search ---
     def solve(self, chain: ProcessChain, *, limit: int = 3) -> list[Layout3D]:
         start = _State(
@@ -291,13 +390,13 @@ def validate(layout: Layout3D, free: set[Pos]) -> list[str]:
     inventories = {layout.source, layout.sink} | {m.pos for m in layout.machines} | {m.cube for m in layout.machines}
     if layout.sink in neighbours(layout.source):
         problems.append("source and sink chests touch")
-    chain_inv = [layout.source, *(m.pos for m in layout.machines), layout.sink]
-    if len(layout.segments) != len(chain_inv) - 1:
-        problems.append("segment count does not match the chain")
+    links = layout.links()
+    if len(layout.segments) != len(links):
+        problems.append("segment count does not match the layout")
         return problems
     owner = {c: i for i, s in enumerate(layout.segments) for c in s.cells}
     for i, seg in enumerate(layout.segments):
-        up, down = chain_inv[i], chain_inv[i + 1]
+        up, down = links[i]
         for k, cell in enumerate(seg.cells):
             touch = {n for n in neighbours(cell) if n in inventories}
             allowed: set[Pos] = set()
@@ -315,12 +414,14 @@ def validate(layout: Layout3D, free: set[Pos]) -> list[str]:
         if down not in neighbours(seg.cells[-1]):
             problems.append(f"segment {i} does not end at its downstream inventory")
     for i, m in enumerate(layout.machines):
+        in_seg = layout.segments[2 * i] if layout.fan_out else layout.segments[i]
+        out_seg = layout.segments[2 * i + 1] if layout.fan_out else layout.segments[i + 1]
         faces = [m.in_face, m.out_face, m.energy_face]
         if None in faces or len(set(faces)) != 3:
             problems.append(f"machine {i} faces are not three distinct sides: {faces}")
-        if add(m.pos, DIRS[m.in_face]) != layout.segments[i].cells[-1]:
+        if add(m.pos, DIRS[m.in_face]) != in_seg.cells[-1]:
             problems.append(f"machine {i} input face does not meet its incoming segment")
-        if m.out_face and add(m.pos, DIRS[m.out_face]) != layout.segments[i + 1].cells[0]:
+        if m.out_face and add(m.pos, DIRS[m.out_face]) != out_seg.cells[0]:
             problems.append(f"machine {i} output face does not meet its outgoing segment")
         if add(m.pos, DIRS[m.energy_face]) != m.cable or m.cube not in neighbours(m.cable):
             problems.append(f"machine {i} power is not machine-cable-cube")
