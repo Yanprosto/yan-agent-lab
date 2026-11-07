@@ -102,3 +102,27 @@ def test_deadline_planning_grows_only_the_bottleneck(catalog, scored24):
     assert counts == [1, 1]
     with pytest.raises(DistrictError):
         plan_to_deadline(catalog, scored24, 3000)  # waves cost time: the best estimate is 3060
+
+
+def test_planning_is_deterministic_across_hash_seeds():
+    """Set iteration order of str is hash-randomised; the same goal must give the same layout."""
+    import os
+    import subprocess
+    import sys
+
+    code = (
+        "import hashlib;"
+        "from mcbuild.catalog import load_catalog;"
+        "from mcbuild.planner.process_graph import rank_chains;"
+        "from mcbuild.planner.district import plan_district;"
+        "c=load_catalog();"
+        "s=rank_chains(c,'minecraft:iron_ingot',24,{'minecraft:raw_iron'})[0];"
+        "d=plan_district(s.chain,[1,3],gap=24);"
+        "print(hashlib.sha256(repr((sorted(d.footprint),sorted(d.backbone),d.power_source)).encode()).hexdigest())"
+    )
+    digests = set()
+    for seed in ("0", "1", "2", "3"):
+        env = {**os.environ, "PYTHONHASHSEED": seed}
+        out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True)
+        digests.add(out.stdout.strip().splitlines()[-1])
+    assert len(digests) == 1

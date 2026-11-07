@@ -154,7 +154,7 @@ class Solver:
         """Shortest transporter path from inventory ``frm`` to inventory ``to``."""
         allowed_to = set(DIRS)
         starts = []
-        for name in frm_faces:
+        for name in sorted(frm_faces):  # sorted: set order of str is hash-randomised
             cell = add(frm, DIRS[name])
             if not self._cell_ok(cell, state, set()):
                 continue
