@@ -71,13 +71,26 @@ def main() -> int:
     parser.add_argument("experiment", choices=["experiment", "mekanism", "splitter"])
     parser.add_argument("--lab", type=Path, default=Path(os.environ.get("YAN_LAB_DIR", "~/mc-lab")).expanduser())
     parser.add_argument("--timeout", type=float, default=900)
-    parser.add_argument("--pos", default="0 -60 0", help="anchor 'x y z'; missions leave builds standing, so use a fresh spot")
+    parser.add_argument(
+        "--tick-rate",
+        type=float,
+        default=40,
+        help="server ticks per second (/tick rate); experiments wait in ticks, so this only shortens wall time",
+    )
+    parser.add_argument(
+        "--pos", default="0 -60 0", help="anchor 'x y z'; missions leave builds standing, so use a fresh spot"
+    )
     args = parser.parse_args()
 
     log = ensure_servers(args.lab)
     offset = log.stat().st_size
     x, _, z = (int(v) for v in args.pos.split())
-    print(rcon_client.run([f"forceload add {x - 32} {z - 32} {x + 63} {z + 63}", f"yanlab {args.experiment} {args.pos}"]))
+    commands = [
+        f"tick rate {args.tick_rate:g}",
+        f"forceload add {x - 32} {z - 32} {x + 63} {z + 63}",
+        f"yanlab {args.experiment} {args.pos}",
+    ]
+    print(rcon_client.run(commands))
 
     deadline = time.monotonic() + args.timeout
     while time.monotonic() < deadline:
