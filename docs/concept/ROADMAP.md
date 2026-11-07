@@ -38,7 +38,7 @@ Live runs below were made on the headless lab (`tools/headless_lab/`: NeoForge 2
 
 - **I14:** v0.4–v4.1 sessions in `server/ws_server.py` and mission modules are still
   hand-written; new work (probe, planner) is data-driven. Port old sessions as needed.
-- **Layout:** the planner lays a straight line in free space (no 3D placement).
+- **Layout:** `/yanlab plan` still lays a straight line; `/yanlab layout` fits a chain into a scanned volume.
 - **Power:** one creative cube per machine (no shared backbone).
 - **T1 simulation:** absent; the catalog has the numbers it needs.
 - Fallback path of the planner not yet exercised live.
@@ -55,18 +55,19 @@ Live runs below were made on the headless lab (`tools/headless_lab/`: NeoForge 2
 
 Factory chain #9–#17 verified live and merged (#26), skill memory (#27/#28), CI green.
 
-### M2 — Catalog and generic compiler  ← active
+### M2 — Catalog and generic compiler  ✓ done 2026-11-07
 
 - [x] Mechanism catalog with evidence levels (#29).
 - [x] Generic machine probe (#30).
 - [x] Process planner v1: chains from recipes, verified cell line, fallback (#30).
-- [ ] Flexible 3D layout in a given volume (see M3 step 1).
+- [x] Flexible 3D layout in a given volume (M3 step 1).
 
-### M3 — Factories at three scales (decision 2026-11-07, ARCHITECTURE §11)
+### M3 — Factories at three scales (decision 2026-11-07, ARCHITECTURE §11)  ← active
 
 Ordered steps:
 
-1. **3D layout in a given volume** (mode A core). Test volumes: low hall, vertical shaft,
+1. **3D layout in a given volume** (mode A core). ✓ 2026-11-07: low hall, shaft and
+   columns hall gave three different layouts, all PASS live first try (runs 20261107T130035Z_layout_ca1b6976, 20261107T125932Z_layout_d81a3fc9, 20261107T125819Z_layout_d289189a). Test volumes: low hall, vertical shaft,
    hall with columns, L corridor. Machines placed in free cells, transporters routed in
    3D, machine sides set from where the routes arrive.
    *Done when:* one goal in three volumes yields three different layouts, all passing
