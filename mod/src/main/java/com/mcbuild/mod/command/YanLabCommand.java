@@ -25,6 +25,10 @@ public final class YanLabCommand {
         dispatcher.register(
                 Commands.literal("yanlab")
                         .requires(source -> source.hasPermission(2))
+                        .then(Commands.literal("machine")
+                                .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                        .then(Commands.argument("spec", StringArgumentType.greedyString())
+                                                .executes(YanLabCommand::runMachineProbe))))
                         .then(Commands.literal("industry")
                                 .then(Commands.argument("pos", BlockPosArgument.blockPos())
                                         .then(Commands.argument("goal", StringArgumentType.greedyString())
@@ -59,7 +63,7 @@ public final class YanLabCommand {
             default -> {
                 source.sendFailure(Component.literal(
                         "[yan-lab] unknown experiment '" + experiment
-                                + "' (experiment|mekanism|splitter|environment|mission; industry <pos> <goal>)"));
+                                + "' (experiment|mekanism|splitter|environment|mission; industry <pos> <goal>; machine <pos> <id>)"));
                 return 0;
             }
         }
@@ -69,6 +73,20 @@ public final class YanLabCommand {
         }
         source.sendSuccess(
                 () -> Component.literal("[yan-lab] " + experiment + " started at " + anchor.toShortString()),
+                true);
+        return 1;
+    }
+
+    private static int runMachineProbe(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        CommandSourceStack source = ctx.getSource();
+        BlockPos anchor = BlockPosArgument.getLoadedBlockPos(ctx, "pos");
+        String spec = StringArgumentType.getString(ctx, "spec");
+        if (!BuildSessionManager.startMachineProbe(spec, anchor, source.getLevel(), null)) {
+            source.sendFailure(Component.literal("[yan-lab] another mcbuild/YAN task is already in progress"));
+            return 0;
+        }
+        source.sendSuccess(
+                () -> Component.literal("[yan-lab] machine probe '" + spec + "' started at " + anchor.toShortString()),
                 true);
         return 1;
     }
