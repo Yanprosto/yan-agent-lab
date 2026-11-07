@@ -18,8 +18,8 @@ Command spec: ``<target item> <count> [sources] [gap=N] [break=0|1] [limit=T] [p
 6. Check the exact contract across every buffer: source empty, intermediate chests,
    machines and transporters empty, final sink == planned output; every machine was busy
    at some poll (``busy_polls`` counts polls at which the machine held items: it shows that
-   the machine received work, not that it was powered); with ``limit`` the run finished in time. Report the T1 estimate against
-   the observed time. Roll back.
+   the machine received work, not that it was powered); with ``limit`` the run finished in
+   time. Report the T1 estimate against the observed time. Roll back.
 """
 
 from __future__ import annotations
